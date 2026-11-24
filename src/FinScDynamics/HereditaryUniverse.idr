@@ -1,14 +1,11 @@
 module FinScDynamics.HereditaryUniverse
 
 import Control.App
-import Data.Maybe
 import FinScBox.BoxInt
 import FinScBox.Interfaces
 import FinScBox.Box
 import FinScBox.HereditaryMSet
-import FinScBox.Views
 import FinScBox.Lenses
-import FinScBox.MultisetCodec
 import FinScBox.BlackRedZoom
 import FinScDynamics.Evolution
 
@@ -17,11 +14,11 @@ import FinScDynamics.Evolution
 --------------------------------------------------------------------------------
 -- 1. DISJOINT STRUCTURAL SHAPES INSIDE ONE `Configuration` (`PureMultiset`)
 --    Five mutually disjoint structural shapes with ZERO synthetic integer tags:
---      1. Active D-Dim Vertex    : positive scalar axis atoms `{ [] : i }` (`isSiteKey`)
---      2. Active Directed Edge   : `{ wrapBox posA : +1, wrapBox posB : -1 }` (`mkEdgeKey`)
---      3. Causal Load Dipole     : `wrapBox (wrapBox loadM)` (`mkLoadKey`)
---      4. Throttle Balance Dipole: `wrapBox { thrM : -1 }` (`mkThrottleKey`)
---      5. Localized 3D Matter    : `{ wrapBox pos3D : +1, { pay : -2 } : +2 }` (`mkMatterKey`)
+--      1. Active D-Dim Vertex       : positive scalar axis atoms `{ [] : i }` (`isSiteKey`)
+--      2. Active Directed Edge      : `{ wrapBox posA : +1, wrapBox posB : -1 }` (`mkEdgeKey`)
+--      3. Causal Load Dipole        : `wrapBox (wrapBox loadM)` (`mkLoadKey`)
+--      4. Throttle Balance Dipole   : `wrapBox { thrM : -1 }` (`mkThrottleKey`)
+--      5. Localized Sub-Config      : `{ wrapBox pos : +1, { pay : -2 } : +2 }` (`mkLocalizedKey`)
 --------------------------------------------------------------------------------
 
 ||| Pure causal interaction-load key `wrapBox (wrapBox loadM)` inside `Configuration`.
@@ -56,18 +53,18 @@ unpackThrottleKey entry =
       thrM  <- extractSignedWrap (intToBoxInt (-1)) inner
       if thrM == emptyPureMSet then Nothing else Just thrM
 
-||| Pure localized 3D matter entry key `{ wrapBox pos3D : +1, { payload : -2 } : +2 }`.
+||| Pure localized sub-configuration key `{ wrapBox pos : +1, { payload : -2 } : +2 }` over any `Configuration` site `pos`.
 public export
-mkMatterKey : (pos3D, payload : Configuration) -> Configuration
-mkMatterKey pos3D payload =
-  let kPos = wrapBox pos3D
+mkLocalizedKey : (pos, payload : Configuration) -> Configuration
+mkLocalizedKey pos payload =
+  let kPos = wrapBox pos
       kPay = MkHMSet (singletonBox payload (intToBoxInt (-2)))
   in MkHMSet $ setBox kPay (intToBoxInt 2) (singletonBox kPos (intToBoxInt 1))
 
-||| Decoder for pure localized 3D matter keys `mkMatterKey`.
+||| Decoder for pure localized sub-configuration keys `mkLocalizedKey`.
 public export
-unpackMatterKey : Configuration -> Maybe (Configuration, Configuration)
-unpackMatterKey entry@(MkHMSet b) =
+unpackLocalizedKey : Configuration -> Maybe (Configuration, Configuration)
+unpackLocalizedKey entry@(MkHMSet b) =
   if isSiteKey entry || treeSizeNonZero b /= 2
     then Nothing
     else do
@@ -77,20 +74,20 @@ unpackMatterKey entry@(MkHMSet b) =
       pay  <- extractSignedWrap (intToBoxInt (-2)) kPay
       Just (p, pay)
 
-||| Extracts a localized matter payload at coordinate `(x, y, z)` for passive `ExternalLens` focus.
+||| Extracts a localized sub-configuration payload at native site key `targetPos : Configuration`
+||| (supporting negative coordinates and arbitrary dimensions with zero tuple conversion).
 public export
-findMatterPayloadAt : (Nat, Nat, Nat) -> Configuration -> Configuration
-findMatterPayloadAt pos (MkHMSet b) =
-  let targetPosKey = natSiteKey pos
-  in foldBox (\entry, _, acc =>
-                if acc /= emptyPureMSet
-                  then acc
-                  else case unpackMatterKey entry of
-                         Just (posM, pay) =>
-                           if posM == targetPosKey then pay else acc
-                         Nothing => acc)
-             emptyPureMSet
-             b
+lookupLocalizedAt : (targetPos : Configuration) -> Configuration -> Configuration
+lookupLocalizedAt targetPos (MkHMSet b) =
+  foldBox (\entry, _, acc =>
+             if acc /= emptyPureMSet
+               then acc
+               else case unpackLocalizedKey entry of
+                      Just (posM, pay) =>
+                        if posM == targetPos then pay else acc
+                      Nothing => acc)
+          emptyPureMSet
+          b
 
 --------------------------------------------------------------------------------
 -- 2. ZERO-TAG ZERO-COPY HEREDITARY ROOT CODEC (`EvolutionState <-> Configuration`)
@@ -224,25 +221,18 @@ verifyRootBalancedDipoles (MkHMSet rootBox) =
                             Nothing   => True)
           True rootBox
 
-||| Counts active streaming peel work on `root : Configuration`:
-||| causal load dipoles and throttle dipoles charge ONLY their outer boundary quanta (`1` per pole).
+||| Model B closed sweep dispatcher under explicit `DynamicsParams`.
 public export
-rootActivePeelWork : Configuration -> Nat
-rootActivePeelWork (MkHMSet b) =
-  foldBox (\k, w, acc =>
-             let mag = weightMagnitude w
-             in if isJust (unpackLoadKey k) || isJust (unpackThrottleKey k)
-                  then acc + mag
-                  else acc + mag * S (fastPeelWorkHMSet k))
-          0 b
+stepHereditaryWithRoot : DynamicsParams -> Configuration -> Configuration
+stepHereditaryWithRoot params root =
+  let unp      = unpackRootToEvolutionState root
+      (st1, _) = stepDynamicsWith pureMSetBasis params unp.stateData
+  in packEvolutionStateToRoot unp.keptNonField st1
 
-||| Model B closed sweep dispatcher over `StepMode` reusing `stepDynamicsByMode pureMSetBasis`.
+||| Model B closed sweep dispatcher over `StepMode`.
 public export
 stepHereditaryByModeRoot : StepMode -> Configuration -> Configuration
-stepHereditaryByModeRoot mode root =
-  let unp = unpackRootToEvolutionState root
-      st1 = stepDynamicsByMode pureMSetBasis mode unp.stateData
-  in packEvolutionStateToRoot unp.keptNonField st1
+stepHereditaryByModeRoot mode = stepHereditaryWithRoot (canonDynamicsParams mode)
 
 public export
 checkTagFreePackUnpackRoundTrip : Bool
@@ -279,17 +269,16 @@ export
 bootHereditary0D : App1 e HereditaryBlackBox
 bootHereditary0D = App1.pure1 (MkHereditaryBox emptyPureMSet)
 
-||| Splits a balanced `+1` and `-1` subsystem pair carrying `payload` at `posA` and `posB`
-||| strictly inside the single `Configuration` `root` via pure shape wrapping (zero synthetic tags).
+||| Splits a balanced `+1` and `-1` subsystem pair carrying `payload` at native `Configuration` sites `posA` and `posB`.
 export
 splitHereditaryFromVacuum :
-  (posA, posB : (Nat, Nat, Nat)) ->
+  (posA, posB : Configuration) ->
   (payload    : Configuration) ->
   (1 u        : HereditaryBlackBox) ->
   App1 e HereditaryBlackBox
 splitHereditaryFromVacuum posA posB payload (MkHereditaryBox root) =
-  let entryA = MkHMSet (singletonBox (mkMatterKey (natSiteKey posA) payload) (intToBoxInt 1))
-      entryB = MkHMSet (singletonBox (mkMatterKey (natSiteKey posB) payload) (intToBoxInt (-1)))
+  let entryA = MkHMSet (singletonBox (mkLocalizedKey posA payload) (intToBoxInt 1))
+      entryB = MkHMSet (singletonBox (mkLocalizedKey posB payload) (intToBoxInt (-1)))
       nxt    = addHMSet root (addHMSet entryA entryB)
   in App1.pure1 (MkHereditaryBox nxt)
 
@@ -303,36 +292,38 @@ injectHereditaryState delta (MkHereditaryBox root) =
   let stRoot = packEvolutionStateToRoot BoxLeaf delta
   in App1.pure1 (MkHereditaryBox (addHMSet root stRoot))
 
-||| Pure closed single-pass `StepMode` dispatcher directly inside `root : Configuration`.
+||| Blind local evolution step directly inside `root : Configuration` under explicit `DynamicsParams`.
+export
+stepHereditaryWith :
+  DynamicsParams ->
+  (1 u : HereditaryBlackBox) ->
+  App1 e HereditaryBlackBox
+stepHereditaryWith params (MkHereditaryBox root) =
+  App1.pure1 (MkHereditaryBox (stepHereditaryWithRoot params root))
+
+||| Blind local evolution step directly inside `root : Configuration` over `StepMode`.
 export
 stepHereditaryByMode :
   StepMode ->
   (1 u : HereditaryBlackBox) ->
   App1 e HereditaryBlackBox
-stepHereditaryByMode mode (MkHereditaryBox root) =
-  App1.pure1 (MkHereditaryBox (stepHereditaryByModeRoot mode root))
+stepHereditaryByMode mode = stepHereditaryWith (canonDynamicsParams mode)
 
-||| Compile-time-proven non-perturbing external observation (`0 same : uOut = uIn`).
+||| Universal non-perturbing external projection (`0 same : uOut = uIn`), observer-agnostic
+||| across `FinSc-Lens` (`applyExternalLens lens`), `FinSc-Dihedron` frames, or raw readouts.
 export
 observeHereditaryPure :
-  ExternalLens Configuration out ->
+  (Configuration -> out) ->
   (1 u : HereditaryBlackBox) ->
   App1 e (PureObservation u out)
-observeHereditaryPure lens (MkHereditaryBox root) =
-  let val = applyExternalLens lens root
+observeHereditaryPure proj (MkHereditaryBox root) =
+  let val = proj root
   in App1.pure1 (MkPureObs (MkHereditaryBox root) val Refl)
 
-||| Consumes the linear `HereditaryBlackBox` once (`One -> Any`), emitting final boundary outcome.
+||| Consumes the linear `HereditaryBlackBox` once (`One -> Any`), returning the quenched final `Configuration`.
 export
-closeHereditary0D : (1 u : HereditaryBlackBox) -> App1 {u=Any} e CloseOutcome
-closeHereditary0D (MkHereditaryBox root) =
-  if root == emptyPureMSet
-    then App1.pure CleanVacuumCollapse
-    else let work = rootActivePeelWork root
-             net  = unwrapBox (sumHMSet root)
-             txt  = renderPureMultiset root
-             stT  = StaticTime 0 (cast work)
-         in App1.pure (FrozenAtHorizon stT txt work net)
+closeHereditary0D : (1 u : HereditaryBlackBox) -> App1 {u=Any} e Configuration
+closeHereditary0D (MkHereditaryBox root) = App1.pure root
 
 --------------------------------------------------------------------------------
 -- 4. COMPILE-TIME QTT 0 DISJOINT-SHAPE & ZERO-SUM THEOREMS
@@ -342,16 +333,16 @@ public export
 0 prfFiveShapesDisjoint :
   (let sampleDipole = subHMSet (MkHMSet (singletonBox (scalarKeyHMSet 1) (intToBoxInt 1)))
                                (MkHMSet (singletonBox (scalarKeyHMSet (-1)) (intToBoxInt 1)))
-       site = natSiteKey (1, 2, 3)
+       site = mkPureCoord3D (-1) 2 (-3)
        edge = mkEdgeKey originSiteKey stepZ
        load = mkLoadKey sampleDipole
        thr  = mkThrottleKey sampleDipole
-       mat  = mkMatterKey (natSiteKey (5, 0, 0)) (scalarKeyHMSet 2)
-   in isSiteKey site && isNothingMaybe (unpackEdgeKey site) && isNothingMaybe (unpackLoadKey site) && isNothingMaybe (unpackThrottleKey site) && isNothingMaybe (unpackMatterKey site) &&
-      not (isSiteKey edge) && isNothingMaybe (unpackLoadKey edge) && isNothingMaybe (unpackThrottleKey edge) && isNothingMaybe (unpackMatterKey edge) &&
-      not (isSiteKey load) && isNothingMaybe (unpackEdgeKey load) && isNothingMaybe (unpackThrottleKey load) && isNothingMaybe (unpackMatterKey load) &&
-      not (isSiteKey thr)  && isNothingMaybe (unpackEdgeKey thr)  && isNothingMaybe (unpackLoadKey thr)  && isNothingMaybe (unpackMatterKey thr) &&
-      not (isSiteKey mat)  && isNothingMaybe (unpackEdgeKey mat)  && isNothingMaybe (unpackLoadKey mat)  && isNothingMaybe (unpackThrottleKey mat)) = True
+       loc  = mkLocalizedKey (mkPureCoord3D (-5) 0 2) (scalarKeyHMSet 2)
+   in isSiteKey site && isNothingMaybe (unpackEdgeKey site) && isNothingMaybe (unpackLoadKey site) && isNothingMaybe (unpackThrottleKey site) && isNothingMaybe (unpackLocalizedKey site) &&
+      not (isSiteKey edge) && isNothingMaybe (unpackLoadKey edge) && isNothingMaybe (unpackThrottleKey edge) && isNothingMaybe (unpackLocalizedKey edge) &&
+      not (isSiteKey load) && isNothingMaybe (unpackEdgeKey load) && isNothingMaybe (unpackThrottleKey load) && isNothingMaybe (unpackLocalizedKey load) &&
+      not (isSiteKey thr)  && isNothingMaybe (unpackEdgeKey thr)  && isNothingMaybe (unpackLoadKey thr)  && isNothingMaybe (unpackLocalizedKey thr) &&
+      not (isSiteKey loc)  && isNothingMaybe (unpackEdgeKey loc)  && isNothingMaybe (unpackLoadKey loc)  && isNothingMaybe (unpackThrottleKey loc)) = True
 prfFiveShapesDisjoint = Refl
 
 public export

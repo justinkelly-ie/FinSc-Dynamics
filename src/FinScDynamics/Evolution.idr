@@ -11,41 +11,13 @@ import FinScBox.BlackRedZoom
 %default total
 
 --------------------------------------------------------------------------------
--- 1. TIMELESS CONFIGURATION & BOUNDARY COLLAPSE OUTCOME
+-- 1. TIMELESS CONFIGURATION, EMERGENT AXIS ATOMS & DIRECTED EDGE KEYS
 --------------------------------------------------------------------------------
 
 ||| Timeless snapshot of a physical multiset configuration (`PureMultiset` without `BoxInt` detail).
 public export
 Configuration : Type
 Configuration = PureMultiset
-
-||| Concise textual rendering of a `Time` horizon tag.
-public export
-showTime : Time -> String
-showTime (StaticTime l h)  = "StaticTime(" ++ show l ++ ", " ++ show h ++ ")"
-showTime (BoundedTime c)   = "BoundedTime(" ++ show c ++ ")"
-showTime (RetroTime g)     = "RetroTime(" ++ show g ++ ")"
-showTime (WindowedTime w)  = "WindowedTime(" ++ show w ++ ")"
-showTime OpenFuture        = "OpenFuture"
-showTime BilateralTime     = "BilateralTime"
-
-||| Outcome emitted when consuming a linear `App1` black-box handle at close-out.
-public export
-data CloseOutcome : Type where
-  ||| All opposing polarities annihilated back to the 0D vacuum root `[]`.
-  CleanVacuumCollapse : CloseOutcome
-  ||| System froze at a static relic with exact global signed multiplicity sum and active work.
-  FrozenAtHorizon     : (staticTime : Time) -> (canonicalText : String) -> (workSteps : Nat) -> (globalNetSum : Integer) -> CloseOutcome
-
-public export
-Show CloseOutcome where
-  show CleanVacuumCollapse = "CleanVacuumCollapse([])"
-  show (FrozenAtHorizon t txt work net) =
-    "FrozenAtHorizon(time=" ++ showTime t ++ ", work=" ++ show work ++ ", net=" ++ show net ++ ", text=" ++ txt ++ ")"
-
---------------------------------------------------------------------------------
--- 2. EMERGENT SPATIAL AXIS ATOMS, SITE KEYS & DIRECTED EDGE KEYS
---------------------------------------------------------------------------------
 
 public export
 axisX : PureMultiset
@@ -73,20 +45,6 @@ originSiteKey : PureMultiset
 originSiteKey = emptyPureMSet
 
 public export
-natSiteKey : (Nat, Nat, Nat) -> PureMultiset
-natSiteKey (x, y, z) =
-  MkHMSet $ setBox axisZ (natToBoxInt z)
-          $ setBox axisY (natToBoxInt y)
-          $ setBox axisX (natToBoxInt x) BoxLeaf
-
-public export
-decodeNatSiteKey : PureMultiset -> (Nat, Nat, Nat)
-decodeNatSiteKey m =
-  (boxToNat (lookupPureKey axisX m),
-   boxToNat (lookupPureKey axisY m),
-   boxToNat (lookupPureKey axisZ m))
-
-public export
 isNothingMaybe : Maybe a -> Bool
 isNothingMaybe Nothing = True
 isNothingMaybe _       = False
@@ -111,6 +69,11 @@ public export
 isSiteKey : PureMultiset -> Bool
 isSiteKey (MkHMSet b) =
   foldBox (\k, _, ok => ok && isAxisAtom k) True b
+
+||| Projects any `Configuration` onto its spatial axis-atom components (`isSiteKey`-preserving, signed, ND).
+public export
+projectToSiteMSet : Configuration -> Configuration
+projectToSiteMSet (MkHMSet b) = MkHMSet (filterBox isAxisAtom b)
 
 ||| Decodes a single-entry wrapped box `{ k : expectedW }` cleanly without allocation.
 public export
@@ -155,12 +118,16 @@ unpackEdgeKey entry@(MkHMSet b) =
       if isSiteKey a && isSiteKey d && a /= d then Just (a, d) else Nothing
 
 --------------------------------------------------------------------------------
--- 3. SPARSE POLARITY & QUADRANCE MAXELS + ARBITRARY-DIMENSION BASIS
+-- 2. SPARSE POLARITY & QUADRANCE MAXELS + 2D, 3D & ND COORDINATE BASES
 --------------------------------------------------------------------------------
 
 public export
 Coord2 : Type
 Coord2 = (SignedCoord, SignedCoord)
+
+public export
+Coord3 : Type
+Coord3 = (SignedCoord, (SignedCoord, SignedCoord))
 
 ||| Active signed polarity carrier (`DiagAntisymForm`):
 ||| diagonal `(a, a)` holds site polarity (+ Black / - Red) and off-diagonal `(a, b)`
@@ -176,7 +143,7 @@ public export
 QuadranceMaxel : Type -> Type
 QuadranceMaxel k = Maxel BoxInt k k SymForm
 
-||| Pure multiset spatial basis shared by `Coord2` and `PureMultiset`.
+||| Pure multiset spatial basis shared across `Coord2`, `Coord3`, and `PureMultiset`.
 public export
 record AxisBasis (k : Type) where
   constructor MkAxisBasis
@@ -191,14 +158,29 @@ record AxisBasis (k : Type) where
   unitAxes          : Box BoxInt k
 
 public export
+mkPureCoord2D : (x, y : Integer) -> Configuration
+mkPureCoord2D x y =
+  MkHMSet $ addAtKeyBox axisY (MkBoxInt y)
+          $ addAtKeyBox axisX (MkBoxInt x) BoxLeaf
+
+public export
+mkPureCoord3D : (x, y, z : Integer) -> Configuration
+mkPureCoord3D x y z =
+  MkHMSet $ addAtKeyBox axisZ (MkBoxInt z)
+          $ addAtKeyBox axisY (MkBoxInt y)
+          $ addAtKeyBox axisX (MkBoxInt x) BoxLeaf
+
+public export
 coordAlong : AxisBasis k -> PureMultiset -> k -> Integer
 coordAlong ax axKey pos = unwrapBox (lookupPureKey axKey (ax.toSiteMSet pos))
 
 public export
 mkCoord2D : AxisBasis k -> Integer -> Integer -> k
-mkCoord2D ax x y =
-  ax.fromSiteMSet
-    (MkHMSet (addAtKeyBox axisY (MkBoxInt y) (singletonBox axisX (MkBoxInt x))))
+mkCoord2D ax x y = ax.fromSiteMSet (mkPureCoord2D x y)
+
+public export
+mkCoord3D : AxisBasis k -> Integer -> Integer -> Integer -> k
+mkCoord3D ax x y z = ax.fromSiteMSet (mkPureCoord3D x y z)
 
 public export
 unitAxesFromAtoms :
@@ -259,9 +241,42 @@ coord2Basis =
     (\axKey, (x, y) => if axKey == axisX then isOddSigned x else isOddSigned y)
     combine
     (\a, b => combine a (inverse b))
-    (\(x, y) => MkHMSet (addAtKeyBox axisY (signedToBoxInt y) (singletonBox axisX (signedToBoxInt x))))
+    (\(x, y) => MkHMSet (addAtKeyBox axisY (signedToBoxInt y) (addAtKeyBox axisX (signedToBoxInt x) BoxLeaf)))
     (\m => (boxIntToSigned (lookupPureKey axisX m), boxIntToSigned (lookupPureKey axisY m)))
     (unitAxesFromAtoms coord2Step (\a, b => combine a (inverse b)) (ZeroZ, ZeroZ) baseAxes2D)
+
+public export
+baseAxes3D : Box BoxInt PureMultiset
+baseAxes3D = setBox axisZ (MkBoxInt 1) baseAxes2D
+
+public export
+coord3Step : PureMultiset -> Coord3
+coord3Step axKey =
+  if axKey == axisX then (PosZ 0, (ZeroZ, ZeroZ))
+  else if axKey == axisY then (ZeroZ, (PosZ 0, ZeroZ))
+  else (ZeroZ, (ZeroZ, PosZ 0))
+
+public export
+coord3Basis : AxisBasis Coord3
+coord3Basis =
+  MkAxisBasis
+    baseAxes3D
+    False
+    coord3Step
+    (\axKey, (x, (y, z)) =>
+       if axKey == axisX then isOddSigned x
+       else if axKey == axisY then isOddSigned y
+       else isOddSigned z)
+    combine
+    (\a, b => combine a (inverse b))
+    (\(x, (y, z)) =>
+       MkHMSet $ addAtKeyBox axisZ (signedToBoxInt z)
+               $ addAtKeyBox axisY (signedToBoxInt y)
+               $ addAtKeyBox axisX (signedToBoxInt x) BoxLeaf)
+    (\m => (boxIntToSigned (lookupPureKey axisX m),
+           (boxIntToSigned (lookupPureKey axisY m),
+            boxIntToSigned (lookupPureKey axisZ m))))
+    (unitAxesFromAtoms coord3Step (\a, b => combine a (inverse b)) (ZeroZ, (ZeroZ, ZeroZ)) baseAxes3D)
 
 public export
 buildPureAxesBox : Nat -> Integer -> Box BoxInt PureMultiset -> Box BoxInt PureMultiset
@@ -285,7 +300,7 @@ pureMSetBasisND dim =
        addHMSet
        subHMSet
        id
-       id
+       projectToSiteMSet
        (unitAxesFromAtoms pureStepOfAtom subHMSet emptyPureMSet axesBox)
 
 public export
@@ -293,7 +308,7 @@ pureMSetBasis : AxisBasis PureMultiset
 pureMSetBasis = pureMSetBasisND 2
 
 --------------------------------------------------------------------------------
--- 4. EVOLUTION STATE & DERIVED QUADRANCE REDUCTIONS
+-- 3. DYNAMICS PARAMETERS, EVOLUTION STATE & DERIVED QUADRANCE REDUCTIONS
 --------------------------------------------------------------------------------
 
 public export
@@ -332,6 +347,30 @@ ModeBalanced = ModeFactor 2 2
 public export
 ModePaced : StepMode
 ModePaced = ModeFactor canonPacedSubTicks 1
+
+||| Parameter bundle governing local quadratic exchange, 1-hop load propagation, and Bresenham throttling:
+||| - `dpMode`     : `ModeLinear` (`dpLagDiv = 0`) or `ModeFactor outerPasses innerTicks`
+||| - `dpGenM0`    : Base Pythagorean generator `m_0 >= 2` (canonical `7` -> `(48, 14, 50)`)
+||| - `dpLagDiv`   : Interaction-load threshold divisor (`<= 0` disables load accumulation)
+||| - `dpDecayNum` : 1-hop retarded load retention numerator (canonical `7`)
+||| - `dpDecayDen` : 1-hop retarded load retention denominator (canonical `32`)
+||| - `dpLinkCoup` : Off-diagonal link-quadrance load coupling weight (canonical `1`)
+public export
+record DynamicsParams where
+  constructor MkDynamicsParams
+  dpMode     : StepMode
+  dpGenM0    : Integer
+  dpLagDiv   : Integer
+  dpDecayNum : Integer
+  dpDecayDen : Integer
+  dpLinkCoup : Integer
+
+public export
+canonDynamicsParams : StepMode -> DynamicsParams
+canonDynamicsParams ModeLinear =
+  MkDynamicsParams ModeLinear 7 0 canonDecayNum canonDecayDen 0
+canonDynamicsParams mode@(ModeFactor _ _) =
+  MkDynamicsParams mode 7 canonLagDiv canonDecayNum canonDecayDen canonLinkCoup
 
 ||| Blind local evolution state over any discrete coordinate basis `k`:
 ||| - `polarityMaxel` : half-stored diagonal site polarity + antisymmetric edge flux (`DiagAntisymForm`)
@@ -409,7 +448,7 @@ stateActiveWork st =
   maxelNodeCount st.polarityMaxel + maxelNodeCount st.loadMaxel + maxelNodeCount st.throttleMaxel
 
 --------------------------------------------------------------------------------
--- 5. BALANCED ZERO-SUM EXCITATIONS & BOUND DIPOLES
+-- 4. BALANCED ZERO-SUM EXCITATIONS & BOUND DIPOLES (2D, 3D & ND)
 --------------------------------------------------------------------------------
 
 public export
@@ -470,28 +509,28 @@ seedEdgeFlux : Ord k => AxisBasis k -> (x1, y1, x2, y2, u : Integer) -> Evolutio
 seedEdgeFlux ax x1 y1 x2 y2 u =
   MkEvolutionState (singletonMaxelEdge (mkCoord2D ax x1 y1) (mkCoord2D ax x2 y2) (MkBoxInt u)) emptyMaxel emptyMaxel
 
-||| Constructs a signed 3D site key `{ axisX : x, axisY : y, axisZ : z }` inside `PureMultiset`.
+||| Polymorphic 3D bound polarity dipole displaced along Z over any `AxisBasis k` (`Coord3` or `PureMultiset`).
 public export
-mkPureCoord3D : (x, y, z : Integer) -> PureMultiset
-mkPureCoord3D x y z =
-  MkHMSet $ addAtKeyBox axisZ (MkBoxInt z)
-          $ addAtKeyBox axisY (MkBoxInt y)
-          $ addAtKeyBox axisX (MkBoxInt x) BoxLeaf
+seedBoundDipole3DZ : Ord k => AxisBasis k -> (x, y, zPos, zNeg, amp : Integer) -> EvolutionState k
+seedBoundDipole3DZ ax x y zPos zNeg amp =
+  seedDipoleSites (mkCoord3D ax x y zPos) (mkCoord3D ax x y zNeg) amp
 
-||| Seeds a 3D bound polarity dipole displaced along the emergent Z axis (`axisZ = { [] : 3 }`).
+||| Polymorphic 3D localized excitation propagating along `+X` at slice `y = y0` with a 4-layer transverse Z envelope.
+public export
+seedExcitation3DZ : Ord k => AxisBasis k -> (x0, y0, z0, amp : Integer) -> EvolutionState k
+seedExcitation3DZ ax x0 y0 z0 amp =
+  seedDirectedPulse ax (mkCoord3D ax 0 y0) x0 z0 amp
+
 public export
 seedPureBoundDipole3DZ : (x, y, zPos, zNeg, amp : Integer) -> EvolutionState PureMultiset
-seedPureBoundDipole3DZ x y zPos zNeg amp =
-  seedDipoleSites (mkPureCoord3D x y zPos) (mkPureCoord3D x y zNeg) amp
+seedPureBoundDipole3DZ = seedBoundDipole3DZ pureMSetBasis
 
-||| Seeds a 3D localized excitation propagating along `+X` at slice `y = y0` with a 4-layer transverse Z envelope.
 public export
 seedPureExcitation3DZ : (x0, y0, z0, amp : Integer) -> EvolutionState PureMultiset
-seedPureExcitation3DZ x0 y0 z0 amp =
-  seedDirectedPulse pureMSetBasis (mkPureCoord3D 0 y0) x0 z0 amp
+seedPureExcitation3DZ = seedExcitation3DZ pureMSetBasis
 
 --------------------------------------------------------------------------------
--- 6. CAUSAL 1-HOP INTERACTION LOAD & ENDOGENOUS BRESENHAM THROTTLING
+-- 5. CAUSAL 1-HOP INTERACTION LOAD & ENDOGENOUS BRESENHAM THROTTLING
 --------------------------------------------------------------------------------
 
 ||| Causal 1-hop symmetric `QuadranceMaxel k` source derived directly from `qM = quadranceOf pol`.
@@ -680,7 +719,20 @@ stepDynamicsCore ax outerPasses innerTicks lagDiv decayNum decayDen linkCoup m0 
           pFin       = runPasses outerPasses (MkPacedPassAcc st.polarityMaxel st.throttleMaxel 0 0)
       in (MkEvolutionState pFin.ppPolarity newLoad pFin.ppThrottle, (pFin.ppYields, pFin.ppSkips))
 
-||| Shared `StepMode` dispatcher over any coordinate basis `AxisBasis k`.
+||| Evaluates one blind evolution step under explicit `DynamicsParams`.
+public export
+stepDynamicsWith :
+  Ord k =>
+  AxisBasis k ->
+  DynamicsParams ->
+  EvolutionState k ->
+  (EvolutionState k, (Nat, Nat))
+stepDynamicsWith ax p st =
+  case p.dpMode of
+    ModeLinear       => stepDynamicsCore ax 1  1  0          p.dpDecayNum p.dpDecayDen 0            p.dpGenM0 st
+    ModeFactor oP iT => stepDynamicsCore ax oP iT p.dpLagDiv p.dpDecayNum p.dpDecayDen p.dpLinkCoup p.dpGenM0 st
+
+||| Shared `StepMode` dispatcher using `canonDynamicsParams mode`.
 public export
 stepDynamicsByMode :
   Ord k =>
@@ -688,97 +740,86 @@ stepDynamicsByMode :
   StepMode ->
   EvolutionState k ->
   EvolutionState k
-stepDynamicsByMode ax ModeLinear st =
-  fst (stepDynamicsCore ax 1 1 0 canonDecayNum canonDecayDen 0 7 st)
-stepDynamicsByMode ax (ModeFactor oP iT) st =
-  fst (stepDynamicsCore ax oP iT canonLagDiv canonDecayNum canonDecayDen canonLinkCoup 7 st)
+stepDynamicsByMode ax mode st = fst (stepDynamicsWith ax (canonDynamicsParams mode) st)
 
 ||| Single streaming step over `EvolutionState k` charging `GohFuel` only on `StreamYield`.
 public export
-stepDynamicsStreamCore :
+stepDynamicsStreamWith :
   Ord k =>
   AxisBasis k ->
-  (outerPasses, innerTicks : Nat) ->
-  (lagDiv : Integer) ->
+  DynamicsParams ->
   EvolutionState k ->
   (StreamStep (EvolutionState k), Nat, Nat)
-stepDynamicsStreamCore ax outerPasses innerTicks lagDiv st =
-  let (st1, (yStep, sStep)) =
-        stepDynamicsCore ax outerPasses innerTicks lagDiv canonDecayNum canonDecayDen canonLinkCoup 7 st
+stepDynamicsStreamWith ax params st =
+  let (st1, (yStep, sStep)) = stepDynamicsWith ax params st
   in if yStep == 0
        then if sStep == 0
               then (StreamDone, 0, 0)
               else (StreamSkip, 0, sStep)
        else (StreamYield st1, yStep, sStep)
 
-||| Streams `st0` via `freezeStateStreamWith` under `(yieldFuel : GohFuel cap, stepBudget : Nat)`.
+||| Streams `st0` via `freezeStateStreamWith` under explicit `DynamicsParams` and `(yieldFuel : GohFuel cap, stepBudget : Nat)`.
 public export
-freezeDynamicsStream :
+freezeDynamicsStreamWith :
   Ord k =>
   AxisBasis k ->
-  (outerPasses, innerTicks : Nat) ->
-  (lagDiv     : Integer) ->
+  DynamicsParams ->
   (g, cap     : Nat) ->
   (yieldFuel  : GohFuel cap) ->
   (stepBudget : Nat) ->
   EvolutionState k ->
   (SolidifiedStream (StaticTime (- cast g) (cast cap)) cap (EvolutionState k), Nat)
-freezeDynamicsStream ax oP iT lagDiv g cap yFuel sBudget st0 =
-  freezeStateStreamWith g cap yFuel sBudget (stepDynamicsStreamCore ax oP iT lagDiv) st0
+freezeDynamicsStreamWith ax params g cap yFuel sBudget st0 =
+  freezeStateStreamWith g cap yFuel sBudget (stepDynamicsStreamWith ax params) st0
 
-||| Maps any peeled `PureMultiset` relic key (directed edge or site key) to a 2D bond `(xA, yA) -> (xB, yB)`.
+||| Injects any peeled `Configuration` relic key `k` (directed edge `mkEdgeKey a b` or site key `s`)
+||| directly over `AxisBasis k` with flux weight `amp` — preserving negative coordinates and 3D/ND axes
+||| with zero `(Nat, Nat, Nat)` tuple conversion.
 public export
-decodeRelicBond : PureMultiset -> (Integer, Integer, Integer, Integer)
-decodeRelicBond k =
-  case unpackEdgeKey k of
-    Just (a, b) =>
-      let (xA, yA, _) = decodeNatSiteKey a
-          (xB, yB, _) = decodeNatSiteKey b
-      in (natToInteger xA, natToInteger yA, natToInteger xB, natToInteger yB)
-    Nothing =>
-      let (x, y, _) = decodeNatSiteKey k
-          xi        = natToInteger x
-          yi        = natToInteger y
-      in (xi, yi, xi + 1, yi)
-
-public export
-injectRelicBond : Ord k => AxisBasis k -> EvolutionState k -> PureMultiset -> Integer -> EvolutionState k
+injectRelicBond : Ord k => AxisBasis k -> EvolutionState k -> Configuration -> Integer -> EvolutionState k
 injectRelicBond ax u k amp =
-  let (xA, yA, xB, yB) = decodeRelicBond k
-  in u <+> seedEdgeFlux ax xA yA xB yB amp
+  let (posA, posB) =
+        case unpackEdgeKey k of
+          Just (a, b) => (ax.fromSiteMSet a, ax.fromSiteMSet b)
+          Nothing     =>
+            let s = ax.fromSiteMSet (projectToSiteMSet k)
+            in (s, ax.shiftAdd s (ax.axisStep axisX))
+  in u <+> MkEvolutionState (singletonMaxelEdge posA posB (MkBoxInt amp)) emptyMaxel emptyMaxel
 
-||| Coupled two-multiset boundary flow: external reservoir `eSrc : Configuration` peels 1 bond quantum
-||| (`qAmp`, quadrance `qAmp^2`) per tick into `u : EvolutionState k` via `viewAsAntiBox eSrc`,
-||| automatically decoupling into closed cooling once `eSrc == []`.
+||| Coupled two-multiset boundary flow parameterized by `DynamicsParams`:
+||| external reservoir `eSrc : Configuration` peels 1 bond quantum (`qAmp`, quadrance `qAmp^2`) per tick
+||| into `u : EvolutionState k` via `viewAsAntiBox eSrc`, decoupling into closed evolution once `eSrc == []`.
 public export
 stepCoupledSourceFlow :
   Ord k =>
   AxisBasis k ->
+  DynamicsParams ->
   (qAmp : Integer) ->
   (EvolutionState k, Configuration) ->
   (StreamStep (EvolutionState k, Configuration), Nat, Nat)
-stepCoupledSourceFlow ax qAmp (u, eSrc) =
+stepCoupledSourceFlow ax params qAmp (u, eSrc) =
   let (uIn, nextSrc) =
         case viewAsAntiBox eSrc of
           EmptyVacuum       => (u, emptyPureMSet)
           PopBlackBox k rst => (injectRelicBond ax u k qAmp, rst)
           PopRedBox   k rst => (injectRelicBond ax u k (-qAmp), rst)
-      (uNext, (yStep, sStep)) = stepDynamicsCore ax 1 1 0 canonDecayNum canonDecayDen 0 7 uIn
+      (uNext, (yStep, sStep)) = stepDynamicsWith ax params uIn
   in if yStep == 0 && sStep == 0 && nextSrc == emptyPureMSet
        then (StreamDone, 0, 0)
        else (StreamYield (uNext, nextSrc), max 1 yStep, sStep)
 
-||| Active bidirectional coupling of two evolving `EvolutionState k` universes `(uA, uB)` across an
-||| arbitrary `seam : PolarityMaxel k` boundary mask (`maskByBox`, zero global oracle).
+||| Active bidirectional coupling of two evolving `EvolutionState k` universes `(uA, uB)` under `DynamicsParams`
+||| across any `seam : PolarityMaxel k` boundary mask (`maskByBox`, zero global oracle).
 public export
 stepCoupledUniversePair :
   Ord k =>
   AxisBasis k ->
+  DynamicsParams ->
   (seam : PolarityMaxel k) ->
   (qAmp : Integer) ->
   (EvolutionState k, EvolutionState k) ->
   (StreamStep (EvolutionState k, EvolutionState k), Nat, Nat)
-stepCoupledUniversePair ax seam qAmp (uA, uB) =
+stepCoupledUniversePair ax params seam qAmp (uA, uB) =
   let diffBox  = maskByBox (subMaxel uA.polarityMaxel uB.polarityMaxel).rawMaxelBox seam.rawMaxelBox
       clampQ   = \w =>
         let d = unwrapBox w
@@ -786,14 +827,14 @@ stepCoupledUniversePair ax seam qAmp (uA, uB) =
       deltaBox = zipZeroWeightBox (\w, _ => clampQ w) diffBox diffBox
       deltaSt  = MkEvolutionState (MkMaxel deltaBox) emptyMaxel emptyMaxel
       negSt    = MkEvolutionState (MkMaxel (mapBoxWeight negWeight deltaBox)) emptyMaxel emptyMaxel
-      (nA, (yA, sA)) = stepDynamicsCore ax 1 1 0 canonDecayNum canonDecayDen 0 7 (uA <+> negSt)
-      (nB, (yB, sB)) = stepDynamicsCore ax 1 1 0 canonDecayNum canonDecayDen 0 7 (uB <+> deltaSt)
+      (nA, (yA, sA)) = stepDynamicsWith ax params (uA <+> negSt)
+      (nB, (yB, sB)) = stepDynamicsWith ax params (uB <+> deltaSt)
   in if yA + yB == 0 && sA + sB == 0
        then (StreamDone, 0, 0)
        else (StreamYield (nA, nB), max 1 (yA + yB), sA + sB)
 
 --------------------------------------------------------------------------------
--- 7. COMPILE-TIME QTT 0 ALGEBRAIC INVARIANTS
+-- 6. COMPILE-TIME QTT 0 ALGEBRAIC INVARIANTS
 --------------------------------------------------------------------------------
 
 public export
@@ -854,20 +895,15 @@ public export
 prfExchangeQuadraticResonance = Refl
 
 public export
-0 prfNatSiteKeyRoundTrip870 :
-  FinScDynamics.Evolution.decodeNatSiteKey (FinScDynamics.Evolution.natSiteKey (8, 7, 0)) = (8, 7, 0)
-prfNatSiteKeyRoundTrip870 = Refl
-
-public export
 0 prfPureStepShift :
-  addHMSet (FinScDynamics.Evolution.natSiteKey (8, 7, 0)) FinScDynamics.Evolution.stepX
-  = FinScDynamics.Evolution.natSiteKey (9, 7, 0)
+  addHMSet (FinScDynamics.Evolution.mkPureCoord3D (-8) 7 (-3)) FinScDynamics.Evolution.stepX
+  = FinScDynamics.Evolution.mkPureCoord3D (-7) 7 (-3)
 prfPureStepShift = Refl
 
 public export
 0 prfEdgeKeyRoundTrip :
-  (let pA = originSiteKey
-       pB = stepX
+  (let pA = mkPureCoord3D (-2) 5 1
+       pB = mkPureCoord3D (-1) 5 1
        k  = mkEdgeKey pA pB
    in case unpackEdgeKey k of
         Just (a, b) => (a == pA) && (b == pB)

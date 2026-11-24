@@ -2,85 +2,91 @@ module FinScDynamics.FlatUniverse
 
 import Control.App
 import FinScBox.BoxInt
-import FinScBox.Box
-import FinScBox.HereditaryMSet
 import FinScBox.Lenses
 import FinScDynamics.Evolution
 
 %default total
 
 --------------------------------------------------------------------------------
--- 1. MODEL A: CLOSED OPAQUE 0D SPARSE FIELD COMPUTE (`App1`, `NoThrow`)
---    - Holds ONLY ONE `FlatState = EvolutionState Coord2` (zero sidecar fields).
---    - Evolves blindly on unbounded `Coord2 = (SignedCoord, SignedCoord)` (zero walls, zero observer).
+-- 1. MODEL A: POLYMORPHIC CLOSED 0D SPARSE FIELD COMPUTE (`App1`, `NoThrow`)
+--    - Parameterized over any discrete coordinate basis `k` (`SignedCoord` 1D, `Coord2` 2D, `Coord3` 3D).
+--    - Evolves blindly with zero walls, zero observer state, and zero display/codec dependencies.
 --------------------------------------------------------------------------------
-
-public export
-FlatState : Type
-FlatState = EvolutionState Coord2
 
 export
-data FlatBlackBox : Type where
-  MkFlatBox : (state : FlatState) -> FlatBlackBox
+data FlatBlackBox : (k : Type) -> Type where
+  MkFlatBox : (basis : AxisBasis k) -> (state : EvolutionState k) -> FlatBlackBox k
 
 --------------------------------------------------------------------------------
--- 2. CLOSED LINEAR `App1` COMPUTE & NON-PERTURBING `PureObservation` TAPS
+-- 2. CLOSED LINEAR `App1` COMPUTE & NON-PERTURBING `PureObservation` TAP
 --------------------------------------------------------------------------------
 
-||| Boots Model A cleanly from the 0D vacuum root `[]`.
+||| Boots Model A cleanly from the 0D vacuum root `[]` over any coordinate `AxisBasis k`.
 export
-bootFlat0D : App1 e FlatBlackBox
-bootFlat0D = App1.pure1 (MkFlatBox emptyEvolutionState)
+bootFlatWith : AxisBasis k -> App1 e (FlatBlackBox k)
+bootFlatWith basis = App1.pure1 (MkFlatBox basis emptyEvolutionState)
 
-||| Splits a balanced dipole `+weight` at `posA` and `-weight` at `posB` directly inside `FlatState`.
+||| Boots the canonical 2D `Coord2` flat black box.
+export
+bootFlat0D : App1 e (FlatBlackBox Coord2)
+bootFlat0D = bootFlatWith coord2Basis
+
+||| Boots the canonical 3D `Coord3` flat black box.
+export
+bootFlat3D : App1 e (FlatBlackBox Coord3)
+bootFlat3D = bootFlatWith coord3Basis
+
+||| Splits a balanced dipole `+weight` at `posA` and `-weight` at `posB` directly over native coordinates `k`.
 export
 splitFlatFromVacuum :
-  (posA, posB : (Nat, Nat, Nat)) ->
+  Ord k =>
+  (posA, posB : k) ->
   (weight     : BoxInt) ->
-  (1 u        : FlatBlackBox) ->
-  App1 e FlatBlackBox
-splitFlatFromVacuum (x1, y1, _) (x2, y2, _) (MkBoxInt w) (MkFlatBox state) =
-  let pA    = mkCoord2D coord2Basis (natToInteger x1) (natToInteger y1)
-      pB    = mkCoord2D coord2Basis (natToInteger x2) (natToInteger y2)
-      delta = seedDipoleSites pA pB w
-  in App1.pure1 (MkFlatBox (addEvolutionState state delta))
+  (1 u        : FlatBlackBox k) ->
+  App1 e (FlatBlackBox k)
+splitFlatFromVacuum posA posB (MkBoxInt w) (MkFlatBox basis state) =
+  App1.pure1 (MkFlatBox basis (addEvolutionState state (seedDipoleSites posA posB w)))
 
-||| Superposes an arbitrary balanced zero-sum `FlatState` directly into Model A's sparse state.
+||| Superposes an arbitrary balanced zero-sum `EvolutionState k` directly into Model A.
 export
 injectFlatState :
-  FlatState ->
-  (1 u : FlatBlackBox) ->
-  App1 e FlatBlackBox
-injectFlatState delta (MkFlatBox state) =
-  App1.pure1 (MkFlatBox (addEvolutionState state delta))
+  Ord k =>
+  EvolutionState k ->
+  (1 u : FlatBlackBox k) ->
+  App1 e (FlatBlackBox k)
+injectFlatState delta (MkFlatBox basis state) =
+  App1.pure1 (MkFlatBox basis (addEvolutionState state delta))
 
-||| Pure closed single-pass `StepMode` dispatcher on `FlatBlackBox`.
+||| Blind local evolution step under explicit `DynamicsParams`.
+export
+stepFlatWith :
+  Ord k =>
+  DynamicsParams ->
+  (1 u : FlatBlackBox k) ->
+  App1 e (FlatBlackBox k)
+stepFlatWith params (MkFlatBox basis state) =
+  App1.pure1 (MkFlatBox basis (fst (stepDynamicsWith basis params state)))
+
+||| Blind local evolution step under `canonDynamicsParams mode`.
 export
 stepFlatByMode :
+  Ord k =>
   StepMode ->
-  (1 u : FlatBlackBox) ->
-  App1 e FlatBlackBox
-stepFlatByMode mode (MkFlatBox state) =
-  App1.pure1 (MkFlatBox (stepDynamicsByMode coord2Basis mode state))
+  (1 u : FlatBlackBox k) ->
+  App1 e (FlatBlackBox k)
+stepFlatByMode mode = stepFlatWith (canonDynamicsParams mode)
 
-||| Non-perturbing external projection on `FlatBlackBox` carrying `0 same : uOut = uIn`.
+||| Universal non-perturbing external projection on `FlatBlackBox k` carrying `0 same : uOut = uIn`.
 export
-observeFlatDirect :
-  (FlatState -> out) ->
-  (1 u : FlatBlackBox) ->
+observeFlatPure :
+  (EvolutionState k -> out) ->
+  (1 u : FlatBlackBox k) ->
   App1 e (PureObservation u out)
-observeFlatDirect proj (MkFlatBox state) =
+observeFlatPure proj (MkFlatBox basis state) =
   let val = proj state
-  in App1.pure1 (MkFlatBox state `MkPureObs` val $ Refl)
+  in App1.pure1 (MkFlatBox basis state `MkPureObs` val $ Refl)
 
-||| Consumes the linear `FlatBlackBox` once (`One -> Any`), emitting final boundary outcome.
+||| Consumes the linear `FlatBlackBox k` once (`One -> Any`), returning the quenched final `EvolutionState k`.
 export
-closeFlat0D : (1 u : FlatBlackBox) -> App1 {u=Any} e CloseOutcome
-closeFlat0D (MkFlatBox state) =
-  if isEmptyMaxel state.polarityMaxel &&
-     isEmptyMaxel state.loadMaxel && isEmptyMaxel state.throttleMaxel
-    then App1.pure CleanVacuumCollapse
-    else let work = stateActiveWork state
-             net  = statePolarityNet state + stateFluxNet state
-             stT  = StaticTime 0 (cast work)
-         in App1.pure (FrozenAtHorizon stT ("FlatSparse(" ++ show work ++ " active)") work net)
+closeFlat0D : (1 u : FlatBlackBox k) -> App1 {u=Any} e (EvolutionState k)
+closeFlat0D (MkFlatBox _ state) = App1.pure state
