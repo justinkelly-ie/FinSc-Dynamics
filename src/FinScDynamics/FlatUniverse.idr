@@ -34,8 +34,8 @@ splitFlatFromVacuum :
   (weight     : BoxInt) ->
   (1 u        : FlatBlackBox k) ->
   App1 e (FlatBlackBox k)
-splitFlatFromVacuum posA posB (MkBoxInt w) (MkFlatBox basis state) =
-  App1.pure1 (MkFlatBox basis (addEvolutionState state (seedDipoleSites posA posB w)))
+splitFlatFromVacuum posA posB weight (MkFlatBox basis state) =
+  App1.pure1 (MkFlatBox basis (state <+> seedDipoleSites posA posB weight))
 
 ||| Superposes an arbitrary balanced zero-sum `EvolutionState k` directly into Model A.
 export
@@ -45,7 +45,7 @@ injectFlatState :
   (1 u : FlatBlackBox k) ->
   App1 e (FlatBlackBox k)
 injectFlatState delta (MkFlatBox basis state) =
-  App1.pure1 (MkFlatBox basis (addEvolutionState state delta))
+  App1.pure1 (MkFlatBox basis (state <+> delta))
 
 ||| Blind local evolution step under explicit `DynamicsParams`.
 export

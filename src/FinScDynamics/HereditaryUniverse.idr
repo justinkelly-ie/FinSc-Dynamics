@@ -40,7 +40,7 @@ unpackLoadKey entry =
 ||| Pure local pacing-throttle key `wrapBox { thrM : -1 }` inside `Configuration`.
 public export
 mkThrottleKey : Configuration -> Configuration
-mkThrottleKey thrM = wrapBox (MkHMSet (singletonBox thrM (MkBoxInt (-1))))
+mkThrottleKey thrM = wrapBox (singletonHMSet thrM (MkBoxInt (-1)))
 
 ||| Decoder for wrapped local pacing-throttle keys `mkThrottleKey thrM`.
 public export
@@ -58,7 +58,7 @@ public export
 mkLocalizedKey : (pos, payload : Configuration) -> Configuration
 mkLocalizedKey pos payload =
   let kPos = wrapBox pos
-      kPay = MkHMSet (singletonBox payload (MkBoxInt (-2)))
+      kPay = singletonHMSet payload (MkBoxInt (-2))
   in MkHMSet $ setBox kPay (MkBoxInt 2) (singletonBox kPos (MkBoxInt 1))
 
 ||| Decoder for pure localized sub-configuration keys `mkLocalizedKey`.
@@ -110,22 +110,24 @@ packPolarityBox :
   Box BoxInt Configuration ->
   PolarityMaxel PureMultiset ->
   Box BoxInt Configuration
-packPolarityBox base (MkMaxel m) =
-  foldBox (\(posA, posB), w, acc =>
-             if posA == posB
-               then addAtKeyBox posA w acc
-               else addAtKeyBox (mkEdgeKey posB posA) (negWeight w) $
-                    addAtKeyBox (mkEdgeKey posA posB) w acc)
-          base m
+packPolarityBox base pol =
+  foldStoredMaxel
+    (\posA, posB, w, acc =>
+       if posA == posB
+         then addAtKeyBox posA w acc
+         else addAtKeyBox (mkEdgeKey posB posA) (negWeight w) $
+              addAtKeyBox (mkEdgeKey posA posB) w acc)
+    base pol
 
 public export
 packSymMaxelToHMSet : QuadranceMaxel PureMultiset -> Configuration
-packSymMaxelToHMSet (MkMaxel m) =
-  MkHMSet $ foldBox (\(posA, posB), w, acc =>
-                       if posA == posB
-                         then addAtKeyBox posA w acc
-                         else addAtKeyBox (mkEdgeKey posA posB) w acc)
-                    BoxLeaf m
+packSymMaxelToHMSet symM =
+  MkHMSet $ foldStoredMaxel
+              (\posA, posB, w, acc =>
+                 if posA == posB
+                   then addAtKeyBox posA w acc
+                   else addAtKeyBox (mkEdgeKey posA posB) w acc)
+              BoxLeaf symM
 
 public export
 unpackHMSetToSymMaxel : Configuration -> QuadranceMaxel PureMultiset
@@ -208,18 +210,18 @@ unpackRootToEvolutionState (MkHMSet rootBox) =
 public export
 verifyRootBalancedDipoles : Configuration -> Bool
 verifyRootBalancedDipoles (MkHMSet rootBox) =
-  foldBox (\entry, mult, ok =>
-             if not ok || isSiteKey entry then ok
-             else case unpackEdgeKey entry of
-                    Just (a, b) => hasBalancedPartner (mkEdgeKey b a) mult rootBox
-                    Nothing =>
-                      case unpackLoadKey entry of
-                        Just loadM => hasSignedUnitPartner (mkLoadKey (negHMSet loadM)) mult rootBox
-                        Nothing =>
-                          case unpackThrottleKey entry of
-                            Just thrM => hasSignedUnitPartner (mkThrottleKey (negHMSet thrM)) mult rootBox
-                            Nothing   => True)
-          True rootBox
+  allBox (\entry, mult =>
+            isSiteKey entry ||
+            case unpackEdgeKey entry of
+              Just (a, b) => hasBalancedPartner (mkEdgeKey b a) mult rootBox
+              Nothing =>
+                case unpackLoadKey entry of
+                  Just loadM => hasSignedUnitPartner (mkLoadKey (negHMSet loadM)) mult rootBox
+                  Nothing =>
+                    case unpackThrottleKey entry of
+                      Just thrM => hasSignedUnitPartner (mkThrottleKey (negHMSet thrM)) mult rootBox
+                      Nothing   => True)
+         rootBox
 
 ||| Model B closed sweep dispatcher under explicit `DynamicsParams`.
 public export
@@ -236,15 +238,15 @@ checkTagFreePackUnpackRoundTrip =
       p0    = mkPureCoord3D 0 0 0
       p1    = mkPureCoord3D 1 0 1
       edgeF = singletonMaxelEdge {form = DiagAntisymForm} p1 p0 (MkBoxInt 5)
-      loadB = addMaxel (diagEmbedMaxel (singletonBox p0 (MkBoxInt 16))) (singletonMaxelEdge p1 p0 (MkBoxInt 25))
-      thrB  = addMaxel (singletonMaxelEdge p0 p1 (MkBoxInt 11))
-                       (singletonMaxelEdge p0 (mkPureCoord3D 0 1 1) (MkBoxInt (-23)))
-      st0   = MkEvolutionState (addMaxel actDp.polarityMaxel edgeF) loadB thrB
+      loadB = diagEmbedMaxel (singletonBox p0 (MkBoxInt 16)) <+> singletonMaxelEdge p1 p0 (MkBoxInt 25)
+      thrB  = singletonMaxelEdge p0 p1 (MkBoxInt 11) <+>
+              singletonMaxelEdge p0 (mkPureCoord3D 0 1 1) (MkBoxInt (-23))
+      st0   = MkEvolutionState (actDp.polarityMaxel <+> edgeF) loadB thrB
       root0 = packEvolutionStateToRoot BoxLeaf st0
       st1   = (unpackRootToEvolutionState root0).stateData
   in (unwrapBox (sumHMSet root0) == 0) &&
      verifyRootBalancedDipoles root0 &&
-     isSymBox (toGeneralMaxel st1.loadMaxel).rawMaxelBox &&
+     isSymMaxel st1.loadMaxel &&
      (treeSizeNonZero (activeAxisAtomsOf pureMSetBasis st1.polarityMaxel) == 3) &&
      (treeSizeNonZero (activeUnitAxesOf pureMSetBasis st1.polarityMaxel) == 6) &&
      (st1.polarityMaxel == st0.polarityMaxel) &&
@@ -272,10 +274,9 @@ splitHereditaryFromVacuum :
   (1 u        : HereditaryBlackBox) ->
   App1 e HereditaryBlackBox
 splitHereditaryFromVacuum posA posB payload (MkHereditaryBox root) =
-  let entryA = MkHMSet (singletonBox (mkLocalizedKey posA payload) (MkBoxInt 1))
-      entryB = MkHMSet (singletonBox (mkLocalizedKey posB payload) (MkBoxInt (-1)))
-      nxt    = addHMSet root (addHMSet entryA entryB)
-  in App1.pure1 (MkHereditaryBox nxt)
+  let entryA = wrapBox (mkLocalizedKey posA payload)
+      entryB = singletonHMSet (mkLocalizedKey posB payload) (MkBoxInt (-1))
+  in App1.pure1 (MkHereditaryBox (root <+> entryA <+> entryB))
 
 ||| Superposes an arbitrary balanced zero-sum `EvolutionState PureMultiset` directly into `root : Configuration`.
 export
@@ -284,8 +285,7 @@ injectHereditaryState :
   (1 u : HereditaryBlackBox) ->
   App1 e HereditaryBlackBox
 injectHereditaryState delta (MkHereditaryBox root) =
-  let stRoot = packEvolutionStateToRoot BoxLeaf delta
-  in App1.pure1 (MkHereditaryBox (addHMSet root stRoot))
+  App1.pure1 (MkHereditaryBox (root <+> packEvolutionStateToRoot BoxLeaf delta))
 
 ||| Blind local evolution step directly inside `root : Configuration` under explicit `DynamicsParams`.
 export
@@ -326,8 +326,7 @@ closeHereditary0D (MkHereditaryBox root) = App1.pure root
 
 public export
 0 prfFiveShapesDisjoint :
-  (let sampleDipole = subHMSet (MkHMSet (singletonBox (scalarKeyHMSet 1) (MkBoxInt 1)))
-                               (MkHMSet (singletonBox (scalarKeyHMSet (-1)) (MkBoxInt 1)))
+  (let sampleDipole = sampleUnitPairMSet
        site = mkPureCoord3D (-1) 2 (-3)
        edge = mkEdgeKey emptyHMSet stepZ
        load = mkLoadKey sampleDipole
