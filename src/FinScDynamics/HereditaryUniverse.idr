@@ -35,12 +35,12 @@ unpackLoadKey entry =
     else do
       inner <- extractWrapBox entry
       loadM <- extractWrapBox inner
-      if loadM == emptyPureMSet then Nothing else Just loadM
+      if loadM == emptyHMSet then Nothing else Just loadM
 
 ||| Pure local pacing-throttle key `wrapBox { thrM : -1 }` inside `Configuration`.
 public export
 mkThrottleKey : Configuration -> Configuration
-mkThrottleKey thrM = wrapBox (MkHMSet (singletonBox thrM (intToBoxInt (-1))))
+mkThrottleKey thrM = wrapBox (MkHMSet (singletonBox thrM (MkBoxInt (-1))))
 
 ||| Decoder for wrapped local pacing-throttle keys `mkThrottleKey thrM`.
 public export
@@ -50,16 +50,16 @@ unpackThrottleKey entry =
     then Nothing
     else do
       inner <- extractWrapBox entry
-      thrM  <- extractSignedWrap (intToBoxInt (-1)) inner
-      if thrM == emptyPureMSet then Nothing else Just thrM
+      thrM  <- extractSignedWrap (MkBoxInt (-1)) inner
+      if thrM == emptyHMSet then Nothing else Just thrM
 
 ||| Pure localized sub-configuration key `{ wrapBox pos : +1, { payload : -2 } : +2 }` over any `Configuration` site `pos`.
 public export
 mkLocalizedKey : (pos, payload : Configuration) -> Configuration
 mkLocalizedKey pos payload =
   let kPos = wrapBox pos
-      kPay = MkHMSet (singletonBox payload (intToBoxInt (-2)))
-  in MkHMSet $ setBox kPay (intToBoxInt 2) (singletonBox kPos (intToBoxInt 1))
+      kPay = MkHMSet (singletonBox payload (MkBoxInt (-2)))
+  in MkHMSet $ setBox kPay (MkBoxInt 2) (singletonBox kPos (MkBoxInt 1))
 
 ||| Decoder for pure localized sub-configuration keys `mkLocalizedKey`.
 public export
@@ -68,10 +68,10 @@ unpackLocalizedKey entry@(MkHMSet b) =
   if isSiteKey entry || treeSizeNonZero b /= 2
     then Nothing
     else do
-      kPos <- extractUniqueSlot (intToBoxInt 1) b
-      kPay <- extractUniqueSlot (intToBoxInt 2) b
+      kPos <- extractUniqueSlot (MkBoxInt 1) b
+      kPay <- extractUniqueSlot (MkBoxInt 2) b
       p    <- extractWrapBox kPos
-      pay  <- extractSignedWrap (intToBoxInt (-2)) kPay
+      pay  <- extractSignedWrap (MkBoxInt (-2)) kPay
       Just (p, pay)
 
 ||| Extracts a localized sub-configuration payload at native site key `targetPos : Configuration`
@@ -80,13 +80,13 @@ public export
 lookupLocalizedAt : (targetPos : Configuration) -> Configuration -> Configuration
 lookupLocalizedAt targetPos (MkHMSet b) =
   foldBox (\entry, _, acc =>
-             if acc /= emptyPureMSet
+             if acc /= emptyHMSet
                then acc
                else case unpackLocalizedKey entry of
                       Just (posM, pay) =>
                         if posM == targetPos then pay else acc
                       Nothing => acc)
-          emptyPureMSet
+          emptyHMSet
           b
 
 --------------------------------------------------------------------------------
@@ -146,7 +146,7 @@ packSymDipole :
   Box BoxInt Configuration
 packSymDipole mkKey maxel acc =
   let m = packSymMaxelToHMSet maxel
-  in if m == emptyPureMSet
+  in if m == emptyHMSet
        then acc
        else addBalancedUnitDipole (mkKey m) (mkKey (negHMSet m)) acc
 
@@ -229,15 +229,10 @@ stepHereditaryWithRoot params root =
       (st1, _) = stepDynamicsWith pureMSetBasis params unp.stateData
   in packEvolutionStateToRoot unp.keptNonField st1
 
-||| Model B closed sweep dispatcher over `StepMode`.
-public export
-stepHereditaryByModeRoot : StepMode -> Configuration -> Configuration
-stepHereditaryByModeRoot mode = stepHereditaryWithRoot (canonDynamicsParams mode)
-
 public export
 checkTagFreePackUnpackRoundTrip : Bool
 checkTagFreePackUnpackRoundTrip =
-  let actDp = seedPureBoundDipole3DZ 2 1 3 4 3
+  let actDp = seedBoundDipole3DZ pureMSetBasis 2 1 3 4 3
       p0    = mkPureCoord3D 0 0 0
       p1    = mkPureCoord3D 1 0 1
       edgeF = singletonMaxelEdge {form = DiagAntisymForm} p1 p0 (MkBoxInt 5)
@@ -267,7 +262,7 @@ data HereditaryBlackBox : Type where
 ||| Boots Model B cleanly from the 0D vacuum root `[]`.
 export
 bootHereditary0D : App1 e HereditaryBlackBox
-bootHereditary0D = App1.pure1 (MkHereditaryBox emptyPureMSet)
+bootHereditary0D = App1.pure1 (MkHereditaryBox emptyHMSet)
 
 ||| Splits a balanced `+1` and `-1` subsystem pair carrying `payload` at native `Configuration` sites `posA` and `posB`.
 export
@@ -277,8 +272,8 @@ splitHereditaryFromVacuum :
   (1 u        : HereditaryBlackBox) ->
   App1 e HereditaryBlackBox
 splitHereditaryFromVacuum posA posB payload (MkHereditaryBox root) =
-  let entryA = MkHMSet (singletonBox (mkLocalizedKey posA payload) (intToBoxInt 1))
-      entryB = MkHMSet (singletonBox (mkLocalizedKey posB payload) (intToBoxInt (-1)))
+  let entryA = MkHMSet (singletonBox (mkLocalizedKey posA payload) (MkBoxInt 1))
+      entryB = MkHMSet (singletonBox (mkLocalizedKey posB payload) (MkBoxInt (-1)))
       nxt    = addHMSet root (addHMSet entryA entryB)
   in App1.pure1 (MkHereditaryBox nxt)
 
@@ -331,10 +326,10 @@ closeHereditary0D (MkHereditaryBox root) = App1.pure root
 
 public export
 0 prfFiveShapesDisjoint :
-  (let sampleDipole = subHMSet (MkHMSet (singletonBox (scalarKeyHMSet 1) (intToBoxInt 1)))
-                               (MkHMSet (singletonBox (scalarKeyHMSet (-1)) (intToBoxInt 1)))
+  (let sampleDipole = subHMSet (MkHMSet (singletonBox (scalarKeyHMSet 1) (MkBoxInt 1)))
+                               (MkHMSet (singletonBox (scalarKeyHMSet (-1)) (MkBoxInt 1)))
        site = mkPureCoord3D (-1) 2 (-3)
-       edge = mkEdgeKey originSiteKey stepZ
+       edge = mkEdgeKey emptyHMSet stepZ
        load = mkLoadKey sampleDipole
        thr  = mkThrottleKey sampleDipole
        loc  = mkLocalizedKey (mkPureCoord3D (-5) 0 2) (scalarKeyHMSet 2)

@@ -34,15 +34,11 @@ axisZ = scalarKeyHMSet 3
 ||| Unit coordinate shifts strictly inside `PureMultiset` (zero tuple conversion).
 public export
 stepX : PureMultiset
-stepX = MkHMSet (singletonBox axisX (intToBoxInt 1))
+stepX = MkHMSet (singletonBox axisX (MkBoxInt 1))
 
 public export
 stepZ : PureMultiset
-stepZ = MkHMSet (singletonBox axisZ (intToBoxInt 1))
-
-public export
-originSiteKey : PureMultiset
-originSiteKey = emptyPureMSet
+stepZ = MkHMSet (singletonBox axisZ (MkBoxInt 1))
 
 public export
 isNothingMaybe : Maybe a -> Bool
@@ -85,7 +81,7 @@ extractSignedWrap _ _ = Nothing
 ||| Decodes `wrapBox k = { k : +1 }` back to `k`.
 public export
 extractWrapBox : PureMultiset -> Maybe PureMultiset
-extractWrapBox = extractSignedWrap (intToBoxInt 1)
+extractWrapBox = extractSignedWrap (MkBoxInt 1)
 
 ||| Extracts the unique key carrying multiplicity `expectedW` in `b`, or `Nothing` if absent/duplicated.
 public export
@@ -101,8 +97,8 @@ extractUniqueSlot expectedW b =
 public export
 mkEdgeKey : (posA, posB : PureMultiset) -> PureMultiset
 mkEdgeKey posA posB =
-  MkHMSet $ setBox (wrapBox posB) (intToBoxInt (-1))
-          $ singletonBox (wrapBox posA) (intToBoxInt 1)
+  MkHMSet $ setBox (wrapBox posB) (MkBoxInt (-1))
+          $ singletonBox (wrapBox posA) (MkBoxInt 1)
 
 ||| Decoder for pure directed-edge keys `mkEdgeKey posA posB`.
 public export
@@ -111,8 +107,8 @@ unpackEdgeKey entry@(MkHMSet b) =
   if isSiteKey entry || treeSizeNonZero b /= 2
     then Nothing
     else do
-      kSrc <- extractUniqueSlot (intToBoxInt 1) b
-      kDst <- extractUniqueSlot (intToBoxInt (-1)) b
+      kSrc <- extractUniqueSlot (MkBoxInt 1) b
+      kDst <- extractUniqueSlot (MkBoxInt (-1)) b
       a    <- extractWrapBox kSrc
       d    <- extractWrapBox kDst
       if isSiteKey a && isSiteKey d && a /= d then Just (a, d) else Nothing
@@ -172,7 +168,7 @@ mkPureCoord3D x y z =
 
 public export
 coordAlong : AxisBasis k -> PureMultiset -> k -> Integer
-coordAlong ax axKey pos = unwrapBox (lookupPureKey axKey (ax.toSiteMSet pos))
+coordAlong ax axKey pos = unwrapBox (lookupKeyHMSet axKey (ax.toSiteMSet pos))
 
 public export
 mkCoord2D : AxisBasis k -> Integer -> Integer -> k
@@ -221,7 +217,7 @@ activeUnitAxesOf ax pol =
       let atoms = activeAxisAtomsOf ax pol
       in if atoms == ax.baseAxes
            then ax.unitAxes
-           else unitAxesFromAtoms ax.axisStep ax.shiftSub (ax.fromSiteMSet emptyPureMSet) atoms
+           else unitAxesFromAtoms ax.axisStep ax.shiftSub (ax.fromSiteMSet emptyHMSet) atoms
 
 public export
 baseAxes2D : Box BoxInt PureMultiset
@@ -242,7 +238,7 @@ coord2Basis =
     combine
     (\a, b => combine a (inverse b))
     (\(x, y) => MkHMSet (addAtKeyBox axisY (signedToBoxInt y) (addAtKeyBox axisX (signedToBoxInt x) BoxLeaf)))
-    (\m => (boxIntToSigned (lookupPureKey axisX m), boxIntToSigned (lookupPureKey axisY m)))
+    (\m => (boxIntToSigned (lookupKeyHMSet axisX m), boxIntToSigned (lookupKeyHMSet axisY m)))
     (unitAxesFromAtoms coord2Step (\a, b => combine a (inverse b)) (ZeroZ, ZeroZ) baseAxes2D)
 
 public export
@@ -273,9 +269,9 @@ coord3Basis =
        MkHMSet $ addAtKeyBox axisZ (signedToBoxInt z)
                $ addAtKeyBox axisY (signedToBoxInt y)
                $ addAtKeyBox axisX (signedToBoxInt x) BoxLeaf)
-    (\m => (boxIntToSigned (lookupPureKey axisX m),
-           (boxIntToSigned (lookupPureKey axisY m),
-            boxIntToSigned (lookupPureKey axisZ m))))
+    (\m => (boxIntToSigned (lookupKeyHMSet axisX m),
+           (boxIntToSigned (lookupKeyHMSet axisY m),
+            boxIntToSigned (lookupKeyHMSet axisZ m))))
     (unitAxesFromAtoms coord3Step (\a, b => combine a (inverse b)) (ZeroZ, (ZeroZ, ZeroZ)) baseAxes3D)
 
 public export
@@ -296,12 +292,12 @@ pureMSetBasisND dim =
        axesBox
        True
        pureStepOfAtom
-       (\axKey, pos => isOddBox (lookupPureKey axKey pos))
+       (\axKey, pos => isOddBox (lookupKeyHMSet axKey pos))
        addHMSet
        subHMSet
        id
        projectToSiteMSet
-       (unitAxesFromAtoms pureStepOfAtom subHMSet emptyPureMSet axesBox)
+       (unitAxesFromAtoms pureStepOfAtom subHMSet emptyHMSet axesBox)
 
 public export
 pureMSetBasis : AxisBasis PureMultiset
@@ -521,14 +517,6 @@ seedExcitation3DZ : Ord k => AxisBasis k -> (x0, y0, z0, amp : Integer) -> Evolu
 seedExcitation3DZ ax x0 y0 z0 amp =
   seedDirectedPulse ax (mkCoord3D ax 0 y0) x0 z0 amp
 
-public export
-seedPureBoundDipole3DZ : (x, y, zPos, zNeg, amp : Integer) -> EvolutionState PureMultiset
-seedPureBoundDipole3DZ = seedBoundDipole3DZ pureMSetBasis
-
-public export
-seedPureExcitation3DZ : (x0, y0, z0, amp : Integer) -> EvolutionState PureMultiset
-seedPureExcitation3DZ = seedExcitation3DZ pureMSetBasis
-
 --------------------------------------------------------------------------------
 -- 5. CAUSAL 1-HOP INTERACTION LOAD & ENDOGENOUS BRESENHAM THROTTLING
 --------------------------------------------------------------------------------
@@ -732,16 +720,6 @@ stepDynamicsWith ax p st =
     ModeLinear       => stepDynamicsCore ax 1  1  0          p.dpDecayNum p.dpDecayDen 0            p.dpGenM0 st
     ModeFactor oP iT => stepDynamicsCore ax oP iT p.dpLagDiv p.dpDecayNum p.dpDecayDen p.dpLinkCoup p.dpGenM0 st
 
-||| Shared `StepMode` dispatcher using `canonDynamicsParams mode`.
-public export
-stepDynamicsByMode :
-  Ord k =>
-  AxisBasis k ->
-  StepMode ->
-  EvolutionState k ->
-  EvolutionState k
-stepDynamicsByMode ax mode st = fst (stepDynamicsWith ax (canonDynamicsParams mode) st)
-
 ||| Single streaming step over `EvolutionState k` charging `GohFuel` only on `StreamYield`.
 public export
 stepDynamicsStreamWith :
@@ -800,11 +778,11 @@ stepCoupledSourceFlow :
 stepCoupledSourceFlow ax params qAmp (u, eSrc) =
   let (uIn, nextSrc) =
         case viewAsAntiBox eSrc of
-          EmptyVacuum       => (u, emptyPureMSet)
+          EmptyVacuum       => (u, emptyHMSet)
           PopBlackBox k rst => (injectRelicBond ax u k qAmp, rst)
           PopRedBox   k rst => (injectRelicBond ax u k (-qAmp), rst)
       (uNext, (yStep, sStep)) = stepDynamicsWith ax params uIn
-  in if yStep == 0 && sStep == 0 && nextSrc == emptyPureMSet
+  in if yStep == 0 && sStep == 0 && nextSrc == emptyHMSet
        then (StreamDone, 0, 0)
        else (StreamYield (uNext, nextSrc), max 1 yStep, sStep)
 

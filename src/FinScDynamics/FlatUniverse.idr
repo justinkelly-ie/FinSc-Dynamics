@@ -26,16 +26,6 @@ export
 bootFlatWith : AxisBasis k -> App1 e (FlatBlackBox k)
 bootFlatWith basis = App1.pure1 (MkFlatBox basis emptyEvolutionState)
 
-||| Boots the canonical 2D `Coord2` flat black box.
-export
-bootFlat0D : App1 e (FlatBlackBox Coord2)
-bootFlat0D = bootFlatWith coord2Basis
-
-||| Boots the canonical 3D `Coord3` flat black box.
-export
-bootFlat3D : App1 e (FlatBlackBox Coord3)
-bootFlat3D = bootFlatWith coord3Basis
-
 ||| Splits a balanced dipole `+weight` at `posA` and `-weight` at `posB` directly over native coordinates `k`.
 export
 splitFlatFromVacuum :
