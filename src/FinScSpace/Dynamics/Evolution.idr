@@ -16,12 +16,16 @@ import public FinScSpace.Geometry.Affine
 --------------------------------------------------------------------------------
 
 public export
-canonDecayNum : Integer
+canonDecayNum : BoxInt
 canonDecayNum = 7
 
 public export
-canonDecayDen : Integer
+canonDecayDen : BoxInt
 canonDecayDen = 32
+
+public export
+canonLoadCutDiv : BoxInt
+canonLoadCutDiv = 16
 
 public export
 data StepMode
@@ -40,21 +44,23 @@ Show StepMode where
   show (ModeFactor a b) = "ModeFactor(" ++ show a ++ ", " ++ show b ++ ")"
 
 ||| Parameter bundle governing local quadratic exchange, 1-hop load propagation, and Bresenham throttling:
-||| - `dpMode`     : `ModeLinear` (`dpLagDiv = 0`) or `ModeFactor outerPasses innerTicks`
-||| - `dpGenM0`    : Base Pythagorean generator `m_0 >= 2` (canonical `7` -> `(48, 14, 50)`)
-||| - `dpLagDiv`   : Interaction-load threshold divisor (`<= 0` disables load accumulation)
-||| - `dpDecayNum` : 1-hop retarded load retention numerator (canonical `7`)
-||| - `dpDecayDen` : 1-hop retarded load retention denominator (canonical `32`)
-||| - `dpLinkCoup` : Off-diagonal link-quadrance load coupling weight (canonical `1`)
+||| - `dpMode`       : `ModeLinear` (`dpLagDiv = 0`) or `ModeFactor outerPasses innerTicks`
+||| - `dpGenM0`      : Base Pythagorean generator `m_0 >= 2` (canonical `7` -> `(48, 14, 50)`)
+||| - `dpLagDiv`     : Interaction-load threshold divisor (`<= 0` disables load accumulation)
+||| - `dpLoadCutDiv` : Causal load truncation divisor relative to `dpLagDiv` (canonical `16`)
+||| - `dpDecayNum`   : 1-hop retarded load retention numerator (canonical `7`)
+||| - `dpDecayDen`   : 1-hop retarded load retention denominator (canonical `32`)
+||| - `dpLinkCoup`   : Off-diagonal link-quadrance load coupling weight (canonical `1`)
 public export
 record DynamicsParams where
   constructor MkDynamicsParams
-  dpMode     : StepMode
-  dpGenM0    : Integer
-  dpLagDiv   : Integer
-  dpDecayNum : Integer
-  dpDecayDen : Integer
-  dpLinkCoup : Integer
+  dpMode       : StepMode
+  dpGenM0      : BoxInt
+  dpLagDiv     : BoxInt
+  dpLoadCutDiv : BoxInt
+  dpDecayNum   : BoxInt
+  dpDecayDen   : BoxInt
+  dpLinkCoup   : BoxInt
 
 public export
 Eq DynamicsParams where
@@ -62,6 +68,7 @@ Eq DynamicsParams where
     a.dpMode == b.dpMode &&
     a.dpGenM0 == b.dpGenM0 &&
     a.dpLagDiv == b.dpLagDiv &&
+    a.dpLoadCutDiv == b.dpLoadCutDiv &&
     a.dpDecayNum == b.dpDecayNum &&
     a.dpDecayDen == b.dpDecayDen &&
     a.dpLinkCoup == b.dpLinkCoup
@@ -69,9 +76,9 @@ Eq DynamicsParams where
 public export
 canonDynamicsParams : StepMode -> DynamicsParams
 canonDynamicsParams ModeLinear =
-  MkDynamicsParams ModeLinear 7 0 canonDecayNum canonDecayDen 0
+  MkDynamicsParams ModeLinear 7 0 canonLoadCutDiv canonDecayNum canonDecayDen 0
 canonDynamicsParams mode@(ModeFactor _ _) =
-  MkDynamicsParams mode 7 6000000 canonDecayNum canonDecayDen 1
+  MkDynamicsParams mode 7 6000000 canonLoadCutDiv canonDecayNum canonDecayDen 1
 
 ||| Blind local evolution state over any discrete coordinate basis `k`:
 ||| - `polarityMaxel` : half-stored diagonal site polarity + antisymmetric edge flux (`DiagAntisymForm`)
@@ -133,16 +140,16 @@ Ord k => MultisetAlgebra BoxInt (EvolutionState k) where
 
 ||| Total quadrance `2 * sum p(a)^2 + sum_{a < b} u_{ab}^2` via `sumStoredMaxel` of `quadranceOf pol`.
 public export
-stateQuadrance : Ord k => EvolutionState k -> Integer
-stateQuadrance st = unwrapBox (sumStoredMaxel (quadranceOf st.polarityMaxel))
+stateQuadrance : Ord k => EvolutionState k -> BoxInt
+stateQuadrance st = sumStoredMaxel (quadranceOf st.polarityMaxel)
 
 public export
-statePolarityNet : Ord k => EvolutionState k -> Integer
-statePolarityNet st = unwrapBox (traceMaxel st.polarityMaxel)
+statePolarityNet : Ord k => EvolutionState k -> BoxInt
+statePolarityNet st = traceMaxel st.polarityMaxel
 
 public export
-stateFluxNet : Ord k => EvolutionState k -> Integer
-stateFluxNet st = unwrapBox (sumStoredMaxel (toGeneralMaxel (offDiagMaxel st.polarityMaxel)))
+stateFluxNet : Ord k => EvolutionState k -> BoxInt
+stateFluxNet st = sumStoredMaxel (toGeneralMaxel (offDiagMaxel st.polarityMaxel))
 
 public export
 stateFluxAntisym : Ord k => EvolutionState k -> Bool
@@ -224,7 +231,7 @@ public export
 activeQuadranceSource :
   Ord k =>
   Bool ->
-  (linkCoup : Integer) ->
+  (linkCoup : BoxInt) ->
   (pol : Maxel BoxInt k k DiagAntisymForm) ->
   Maxel BoxInt k k SymForm
 activeQuadranceSource False _        _   = emptyMaxel
@@ -237,7 +244,7 @@ activeQuadranceSource True  linkCoup pol =
                   then emptyMaxel
                   else if linkCoup == 1
                     then fluxSq
-                    else scaleM (MkBoxInt linkCoup) fluxSq
+                    else scaleM linkCoup fluxSq
   in siteSrc <+> linkSrc
 
 ||| Causal 1-hop retarded interaction-load step across arbitrary-dimension `unitSt` (`c = 1`, `SymForm`).
@@ -245,20 +252,20 @@ public export
 stepCausalLoadMaxel :
   GroupCoord k =>
   (unitSt : Box BoxInt k) ->
-  (lagDiv, decayNum, decayDen : Integer) ->
+  (lagDiv, loadCutDiv, decayNum, decayDen : BoxInt) ->
   (actSrcM : Maxel BoxInt k k SymForm) ->
   (oldLoad : Maxel BoxInt k k SymForm) ->
   Maxel BoxInt k k SymForm
-stepCausalLoadMaxel unitSt lagDiv decayNum decayDen actSrcM oldLoad =
+stepCausalLoadMaxel unitSt lagDiv loadCutDiv decayNum decayDen actSrcM oldLoad =
   if lagDiv <= 0
     then emptyMaxel
     else
-      let rawMin  = divIntegerPos lagDiv 16
+      let rawMin  = tdivPosBox lagDiv loadCutDiv
           minCut  = if rawMin < 1 then 1 else rawMin
           decayed = if isEmptyMaxel oldLoad || decayDen <= 0
                       then emptyMaxel
                       else scaleDivPruneMaxel decayDen minCut
-                             (scaleM (MkBoxInt decayNum)
+                             (scaleM decayNum
                                 (shiftConvolveMaxel oldLoad unitSt))
       in decayed <+> pruneMinMaxel minCut actSrcM
 
@@ -367,7 +374,7 @@ Ord k => Eq (PacedPassAcc k) where
     a.ppSkips == b.ppSkips
 
 public export
-paceMultiSubTicks : (subTicks : Nat) -> (budget, cost : Integer) -> BoxInt -> (Nat, Nat, BoxInt)
+paceMultiSubTicks : (subTicks : Nat) -> (budget, cost : BoxInt) -> BoxInt -> (Nat, Nat, BoxInt)
 paceMultiSubTicks Z _ _ bal = (0, 0, bal)
 paceMultiSubTicks (S rem) budget cost bal =
   let (step, bal1)   = paceStreamStep budget cost bal
@@ -383,28 +390,28 @@ stepDynamicsCore :
   GroupCoord k =>
   AxisBasis k ->
   (outerPasses, innerTicks : Nat) ->
-  (lagDiv, decayNum, decayDen, linkCoup, m0 : Integer) ->
+  (lagDiv, loadCutDiv, decayNum, decayDen, linkCoup, m0 : BoxInt) ->
   EvolutionState k ->
   (EvolutionState k, (Nat, Nat))
-stepDynamicsCore ax outerPasses innerTicks lagDiv decayNum decayDen linkCoup m0 st =
+stepDynamicsCore ax outerPasses innerTicks lagDiv loadCutDiv decayNum decayDen linkCoup m0 st =
   if isEmptyMaxel st.polarityMaxel && isEmptyMaxel st.loadMaxel && isEmptyMaxel st.throttleMaxel
     then (st, (0, 0))
     else
-      let kInt       = max 1 (natToInteger (outerPasses * innerTicks))
+      let kInt       = max 1 (cast (outerPasses * innerTicks))
           mSub       = if lagDiv > 0 then kInt * m0 else m0
-          baseTriple = pythGeneratorTriple (MkBoxInt mSub)
+          baseTriple = pythGeneratorTriple mSub
           fullTriple = powQuadraticTriple innerTicks baseTriple
           paceBudget = if lagDiv > 0 && m0 > 0 then m0 * lagDiv else 0
           axesBox    = activeAxisAtomsOf ax st.polarityMaxel
           unitSt     = activeUnitAxesOf ax st.polarityMaxel
           actSrc0    = activeQuadranceSource (lagDiv > 0) linkCoup st.polarityMaxel
-          newLoad    = stepCausalLoadMaxel unitSt lagDiv decayNum decayDen actSrc0 st.loadMaxel
+          newLoad    = stepCausalLoadMaxel unitSt lagDiv loadCutDiv decayNum decayDen actSrc0 st.loadMaxel
           runPasses  : Nat -> PacedPassAcc k -> PacedPassAcc k
           runPasses Z acc = acc
           runPasses (S rem) acc =
             let acc1 = sweepCheckerboard ax axesBox (.ppPolarity)
                          (\posA, posB, pA, pB, uOld, a =>
-                            let rawC  = if lagDiv <= 0 then 0 else unwrapBox (linkLoadSum newLoad posA posB)
+                            let rawC  = if lagDiv <= 0 then 0 else linkLoadSum newLoad posA posB
                                 cost  = if rawC < lagDiv then 0 else rawC
                                 bal   = lookupMaxel posA posB a.ppThrottle
                                 (yCnt, sCnt, newBal) = paceMultiSubTicks innerTicks paceBudget cost bal
@@ -431,8 +438,8 @@ stepDynamicsWith :
   (EvolutionState k, (Nat, Nat))
 stepDynamicsWith ax p st =
   case p.dpMode of
-    ModeLinear       => stepDynamicsCore ax 1  1  0          p.dpDecayNum p.dpDecayDen 0            p.dpGenM0 st
-    ModeFactor oP iT => stepDynamicsCore ax oP iT p.dpLagDiv p.dpDecayNum p.dpDecayDen p.dpLinkCoup p.dpGenM0 st
+    ModeLinear       => stepDynamicsCore ax 1  1  0          p.dpLoadCutDiv p.dpDecayNum p.dpDecayDen 0            p.dpGenM0 st
+    ModeFactor oP iT => stepDynamicsCore ax oP iT p.dpLagDiv p.dpLoadCutDiv p.dpDecayNum p.dpDecayDen p.dpLinkCoup p.dpGenM0 st
 
 ||| Single streaming step over `EvolutionState k` charging `GohBound` only on `StreamYield`.
 public export
@@ -530,10 +537,10 @@ prfQuadranceMaxelTotalMass = Refl
 
 public export
 0 prfBondFluxCausesDipoleSplit :
-  (let r  = FinScBox.QuadraticExchange.exchangeQuadratic (MkBoxInt 7) (MkBoxInt 0) (MkBoxInt 0) (MkBoxInt 50)
-       a1 = unwrapBox r.valA
-       b1 = unwrapBox r.valB
-       u1 = unwrapBox r.valU
+  (let r  = FinScBox.QuadraticExchange.exchangeQuadratic 7 0 0 50
+       a1 = r.valA
+       b1 = r.valB
+       u1 = r.valU
    in (a1 == (-7)) && (b1 == 7) && (u1 == 48) &&
       (a1 + b1 == 0) &&
       (2 * (a1 * a1 + b1 * b1) + u1 * u1 == 2500)) = True
@@ -541,10 +548,10 @@ prfBondFluxCausesDipoleSplit = Refl
 
 public export
 0 prfExchangeQuadraticParam7 :
-  (let r  = FinScBox.QuadraticExchange.exchangeQuadratic (MkBoxInt 7) (MkBoxInt 100) (MkBoxInt (-43)) (MkBoxInt 80)
-       a1 = unwrapBox r.valA
-       b1 = unwrapBox r.valB
-       u1 = unwrapBox r.valU
+  (let r  = FinScBox.QuadraticExchange.exchangeQuadratic 7 100 (-43) 80
+       a1 = r.valA
+       b1 = r.valB
+       u1 = r.valU
        q0 = 2 * (100 * 100 + (-43) * (-43)) + 80 * 80
        q1 = 2 * (a1 * a1 + b1 * b1) + u1 * u1
    in (a1 + b1 == 57) && (q1 <= q0)) = True
@@ -552,13 +559,13 @@ prfExchangeQuadraticParam7 = Refl
 
 public export
 0 prfExchangeQuadraticResonance :
-  (let r1 = FinScBox.QuadraticExchange.exchangeQuadratic (MkBoxInt 7) (MkBoxInt 7) (MkBoxInt 0) (MkBoxInt 24)
-       r2 = FinScBox.QuadraticExchange.exchangeQuadratic (MkBoxInt 7) (MkBoxInt 0) (MkBoxInt 7) (MkBoxInt (-24))
-       a1 = unwrapBox r1.valA
-       b1 = unwrapBox r1.valB
-       u1 = unwrapBox r1.valU
+  (let r1 = FinScBox.QuadraticExchange.exchangeQuadratic 7 7 0 24
+       r2 = FinScBox.QuadraticExchange.exchangeQuadratic 7 0 7 (-24)
+       a1 = r1.valA
+       b1 = r1.valB
+       u1 = r1.valU
        q0 = 2 * (7 * 7) + 24 * 24
        q1 = 2 * (a1 * a1 + b1 * b1) + u1 * u1
    in (a1 + b1 == 7) && (q1 <= q0) &&
-      (r2.valA == r1.valB) && (r2.valB == r1.valA) && (unwrapBox r2.valU == -u1)) = True
+      (r2.valA == r1.valB) && (r2.valB == r1.valA) && (r2.valU == negate u1)) = True
 prfExchangeQuadraticResonance = Refl

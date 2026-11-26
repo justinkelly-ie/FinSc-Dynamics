@@ -19,20 +19,20 @@ Configuration = PureMultiset
 ||| Canonical positive scalar axis atom `{ [] : i + 1 }` (`0 -> X`, `1 -> Y`, `2 -> Z`, ...).
 public export
 axisAtom : Nat -> PureMultiset
-axisAtom i = scalarKeyHMSet (natToInteger (S i))
+axisAtom i = scalarKeyHMSet (cast (S i))
 
 ||| If `k` is a positive scalar axis atom `{ [] : i }` (`i >= 1`), returns `Just i`.
 public export
-axisAtomIndex : PureMultiset -> Maybe Integer
-axisAtomIndex (MkHMSet (BoxNode _ BoxLeaf (MkHMSet BoxLeaf) (MkBoxInt i) BoxLeaf)) =
-  if i > 0 then Just i else Nothing
+axisAtomIndex : PureMultiset -> Maybe Nat
+axisAtomIndex (MkHMSet (BoxNode _ BoxLeaf (MkHMSet BoxLeaf) w BoxLeaf)) =
+  if w > 0 then Just (boxToNat w) else Nothing
 axisAtomIndex _ = Nothing
 
 public export
 atomToFin : {n : Nat} -> PureMultiset -> Maybe (Fin n)
 atomToFin k =
   case axisAtomIndex k of
-    Just i  => natToFin (integerToNat (i - 1)) n
+    Just i  => natToFin (minus i 1) n
     Nothing => Nothing
 
 ||| True iff `k` is an emergent positive scalar axis atom `{ [] : i }` (`i >= 1`).
@@ -117,8 +117,8 @@ mkPureCoord =
   foldSpaceWithFin (\i, c, acc => acc <+> scaleM (signedToBoxInt c) (wrapBox (axisAtom (finToNat i)))) emptyHMSet
 
 public export
-coordAlong : AxisBasis k -> PureMultiset -> k -> Integer
-coordAlong ax axKey pos = unwrapBox (lookupKeyHMSet axKey (ax.toSiteMSet pos))
+coordAlong : AxisBasis k -> PureMultiset -> k -> BoxInt
+coordAlong ax axKey pos = lookupKeyHMSet axKey (ax.toSiteMSet pos)
 
 public export
 mkCoord : {n : Nat} -> AxisBasis k -> Space n -> k
@@ -277,7 +277,7 @@ sq x = x * x
 
 ||| Polarized Archimedes' quadrea polynomial:
 ||| `A(Q1, Q2, Q3) = 4 Q1 Q2 - (Q1 + Q2 - Q3)^2`.
-||| Works identically over integer quadrances (`BoxInt` / `Integer`) and free polynomial rings (`Box BoxInt (Space n)`).
+||| Works identically over integer quadrances (`BoxInt`) and free polynomial rings (`Box BoxInt (Space n)`).
 public export
 archimedesQuadrea : (Num r, Neg r) => r -> r -> r -> r
 archimedesQuadrea q1 q2 q3 =

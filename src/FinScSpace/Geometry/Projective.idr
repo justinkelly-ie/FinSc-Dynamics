@@ -44,6 +44,48 @@ public export
 Show Proportion where
   show p = "(" ++ show p.propNum ++ " : " ++ show p.propDen ++ ")"
 
+public export
+normAffineSign : Proportion -> (BoxInt, BoxInt)
+normAffineSign (MkProportion n d) = if d < 0 then (negate n, negate d) else (n, d)
+
+||| Exact division-free affine sum (`[0 : 0]` if either operand is non-affine).
+public export
+addProportion : Proportion -> Proportion -> Proportion
+addProportion p1@(MkProportion n1 d1) p2@(MkProportion n2 d2) =
+  if not (isAffineRatio p1 && isAffineRatio p2)
+    then MkProportion 0 0
+    else if d1 == d2
+      then MkProportion (n1 + n2) d1
+      else MkProportion (n1 * d2 + n2 * d1) (d1 * d2)
+
+public export
+subProportion : Proportion -> Proportion -> Proportion
+subProportion p1 (MkProportion n2 d2) = addProportion p1 (MkProportion (negate n2) d2)
+
+public export
+propLt : Proportion -> Proportion -> Bool
+propLt p1 p2 =
+  isAffineRatio p1 && isAffineRatio p2 &&
+  let (n1, d1) = normAffineSign p1
+      (n2, d2) = normAffineSign p2
+  in n1 * d2 < n2 * d1
+
+public export
+propLe : Proportion -> Proportion -> Bool
+propLe p1 p2 =
+  isAffineRatio p1 && isAffineRatio p2 &&
+  let (n1, d1) = normAffineSign p1
+      (n2, d2) = normAffineSign p2
+  in n1 * d2 <= n2 * d1
+
+public export
+propGt : Proportion -> Proportion -> Bool
+propGt p1 p2 = propLt p2 p1
+
+public export
+propGe : Proportion -> Proportion -> Bool
+propGe p1 p2 = propLe p2 p1
+
 ||| Rational spread between vectors `u, v` under any `SymForm` metric `g`:
 ||| `s_g(u, v) = det(Gram_g(u, v)) / (Q_g(u) * Q_g(v))`.
 public export
@@ -278,7 +320,7 @@ boostRotorAxis2 x u = MkRotor x (vec3Box 0 u 0)
 ||| Converts a Pythagorean `QuadraticTriple (a, b, r)` (`a^2 + b^2 = r^2`) into a rational boost `beta = a / r`.
 public export
 boostFromQuadraticTriple : QuadraticTriple -> Rotor
-boostFromQuadraticTriple (MkQuadraticTriple a b r) = boostRotorAxis1 (MkBoxInt (r + b)) (MkBoxInt a)
+boostFromQuadraticTriple (MkQuadraticTriple a b r) = boostRotorAxis1 (r + b) a
 
 public export
 parabolicNullRotor : (x, s : BoxInt) -> Rotor
