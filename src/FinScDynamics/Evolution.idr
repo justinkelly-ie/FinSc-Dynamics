@@ -106,7 +106,7 @@ unpackEdgeKey entry@(MkHMSet b) =
 -- 2. SPARSE POLARITY & QUADRANCE MAXELS + `Space n` & `PureMultiset` BASES
 --------------------------------------------------------------------------------
 
-||| Pure multiset spatial basis shared across `Space n` and `PureMultiset`.
+||| Pure multiset spatial basis shared across `GroupCoord k` coordinates (`Space n` and `PureMultiset`).
 public export
 record AxisBasis (k : Type) where
   constructor MkAxisBasis
@@ -114,41 +114,22 @@ record AxisBasis (k : Type) where
   allowEmergentAxes : Bool
   axisStep          : PureMultiset -> k
   isOddAxis         : PureMultiset -> k -> Bool
-  shiftAdd          : k -> k -> k
-  shiftSub          : k -> k -> k
   toSiteMSet        : k -> PureMultiset
   fromSiteMSet      : PureMultiset -> k
   unitAxes          : Box BoxInt k
 
 public export
-mkPureCoord : {n : Nat} -> Vect n Integer -> Configuration
-mkPureCoord xs = go Z xs emptyHMSet
-  where
-    go : Nat -> Vect m Integer -> Configuration -> Configuration
-    go _   []        acc = acc
-    go idx (c :: cs) acc = go (S idx) cs (acc + scaleHMSet (MkBoxInt c) (wrapBox (axisNat idx)))
+mkPureCoord : {n : Nat} -> Space n -> Configuration
+mkPureCoord =
+  foldSpaceWithFin (\i, c, acc => acc <+> scaleM (signedToBoxInt c) (wrapBox (axisAtom i))) emptyHMSet
 
 public export
 coordAlong : AxisBasis k -> PureMultiset -> k -> Integer
 coordAlong ax axKey pos = unwrapBox (lookupKeyHMSet axKey (ax.toSiteMSet pos))
 
 public export
-mkCoord : {n : Nat} -> AxisBasis k -> Vect n Integer -> k
-mkCoord ax xs = ax.fromSiteMSet (mkPureCoord xs)
-
-public export
-unitAxesFromAtoms :
-  Ord k =>
-  (PureMultiset -> k) ->
-  (k -> k -> k) ->
-  k ->
-  Box BoxInt PureMultiset ->
-  Box BoxInt k
-unitAxesFromAtoms stepFn subFn zeroK =
-  foldBox (\axKey, _, acc =>
-             let d = stepFn axKey
-             in addAtKeyBox (subFn zeroK d) (MkBoxInt 1) (addAtKeyBox d (MkBoxInt 1) acc))
-          BoxLeaf
+mkCoord : {n : Nat} -> AxisBasis k -> Space n -> k
+mkCoord ax = ax.fromSiteMSet . mkPureCoord
 
 public export
 collectSiteAxisAtoms : PureMultiset -> Box BoxInt PureMultiset -> Box BoxInt PureMultiset
@@ -168,7 +149,7 @@ activeAxisAtomsOf ax pol =
            ax.baseAxes pol
 
 public export
-activeUnitAxesOf : Ord k => AxisBasis k -> Maxel BoxInt k k DiagAntisymForm -> Box BoxInt k
+activeUnitAxesOf : GroupCoord k => AxisBasis k -> Maxel BoxInt k k DiagAntisymForm -> Box BoxInt k
 activeUnitAxesOf ax pol =
   if not ax.allowEmergentAxes
     then ax.unitAxes
@@ -176,30 +157,21 @@ activeUnitAxesOf ax pol =
       let atoms = activeAxisAtomsOf ax pol
       in if atoms == ax.baseAxes
            then ax.unitAxes
-           else unitAxesFromAtoms ax.axisStep ax.shiftSub (ax.fromSiteMSet emptyHMSet) atoms
+           else unitStencilBox ax.axisStep atoms
 
-||| Builds a fixed-dimension `AxisBasis k` over any `GroupCoord k`.
+||| Builds an `AxisBasis k` over any `GroupCoord k`.
 public export
-mkGroupAxisBasis :
+mkAxisBasis :
   GroupCoord k =>
-  (axes     : Box BoxInt PureMultiset) ->
-  (stepFn   : PureMultiset -> k) ->
-  (oddFn    : PureMultiset -> k -> Bool) ->
-  (toMSet   : k -> PureMultiset) ->
-  (fromMSet : PureMultiset -> k) ->
+  (allowEmergent : Bool) ->
+  (axes          : Box BoxInt PureMultiset) ->
+  (stepFn        : PureMultiset -> k) ->
+  (oddFn         : PureMultiset -> k -> Bool) ->
+  (toMSet        : k -> PureMultiset) ->
+  (fromMSet      : PureMultiset -> k) ->
   AxisBasis k
-mkGroupAxisBasis axes stepFn oddFn toMSet fromMSet =
-  let subFn = \a, b => combine a (inverse b)
-  in MkAxisBasis
-       axes
-       False
-       stepFn
-       oddFn
-       combine
-       subFn
-       toMSet
-       fromMSet
-       (unitAxesFromAtoms stepFn subFn origin axes)
+mkAxisBasis allowEmergent axes stepFn oddFn toMSet fromMSet =
+  MkAxisBasis axes allowEmergent stepFn oddFn toMSet fromMSet (unitStencilBox stepFn axes)
 
 public export
 baseAxesN : Nat -> Box BoxInt PureMultiset
@@ -210,27 +182,24 @@ baseAxesN (S k) = setBox (axisNat k) (MkBoxInt 1) (baseAxesN k)
 public export
 spaceBasis : {n : Nat} -> AxisBasis (Space n)
 spaceBasis {n} =
-  mkGroupAxisBasis
+  mkAxisBasis
+    False
     (baseAxesN n)
     (\axKey => maybe (zeroSpace n) unitSpace (atomToFin axKey))
     (\axKey, pos => maybe False (\i => isOddSigned (indexSpace i pos)) (atomToFin axKey))
-    (foldSpaceWithFin (\i, c, acc => acc + scaleHMSet (signedToBoxInt c) (wrapBox (axisAtom i))) emptyHMSet)
+    mkPureCoord
     (\m => tabulateSpace (\i => cast (lookupKeyHMSet (axisAtom i) m)))
 
 public export
 pureMSetBasis : Nat -> AxisBasis PureMultiset
 pureMSetBasis dim =
-  let axes = baseAxesN dim
-  in MkAxisBasis
-       axes
-       True
-       wrapBox
-       (\axKey, pos => isOddBox (lookupKeyHMSet axKey pos))
-       addHMSet
-       subHMSet
-       id
-       projectToSiteMSet
-       (unitAxesFromAtoms wrapBox subHMSet emptyHMSet axes)
+  mkAxisBasis
+    True
+    (baseAxesN dim)
+    wrapBox
+    (\axKey, pos => isOddBox (lookupKeyHMSet axKey pos))
+    id
+    projectToSiteMSet
 
 --------------------------------------------------------------------------------
 -- 3. DYNAMICS PARAMETERS, EVOLUTION STATE & DERIVED QUADRANCE REDUCTIONS
@@ -285,24 +254,36 @@ record EvolutionState (k : Type) where
   throttleMaxel : Maxel BoxInt k k SymForm
 
 public export
-emptyEvolutionState : EvolutionState k
-emptyEvolutionState = MkEvolutionState emptyMaxel emptyMaxel emptyMaxel
-
-public export
-addEvolutionState : Ord k => EvolutionState k -> EvolutionState k -> EvolutionState k
-addEvolutionState a b =
-  MkEvolutionState
-    (a.polarityMaxel <+> b.polarityMaxel)
-    (a.loadMaxel <+> b.loadMaxel)
-    (a.throttleMaxel <+> b.throttleMaxel)
-
-public export
 Ord k => Semigroup (EvolutionState k) where
-  (<+>) = addEvolutionState
+  (<+>) a b =
+    MkEvolutionState
+      (a.polarityMaxel <+> b.polarityMaxel)
+      (a.loadMaxel <+> b.loadMaxel)
+      (a.throttleMaxel <+> b.throttleMaxel)
 
 public export
 Ord k => Monoid (EvolutionState k) where
-  neutral = emptyEvolutionState
+  neutral = MkEvolutionState emptyMaxel emptyMaxel emptyMaxel
+
+public export
+Ord k => MultisetAlgebra BoxInt (EvolutionState k) where
+  zeroM  = neutral
+  addM   = (<+>)
+  negM s = MkEvolutionState (negM s.polarityMaxel) (negM s.loadMaxel) (negM s.throttleMaxel)
+  subM a b =
+    MkEvolutionState
+      (subM a.polarityMaxel b.polarityMaxel)
+      (subM a.loadMaxel b.loadMaxel)
+      (subM a.throttleMaxel b.throttleMaxel)
+  scaleM c s =
+    MkEvolutionState
+      (scaleM c s.polarityMaxel)
+      (scaleM c s.loadMaxel)
+      (scaleM c s.throttleMaxel)
+  dotM a b =
+    (a.polarityMaxel <.> b.polarityMaxel) +
+    (a.loadMaxel <.> b.loadMaxel) +
+    (a.throttleMaxel <.> b.throttleMaxel)
 
 ||| Canonical symmetric quadrance `Maxel` (`SymForm`) of `pol : Maxel BoxInt k k DiagAntisymForm`:
 ||| diagonal `(a, a)` holds `2 * p(a)^2` and off-diagonal `(a, b)` (`a < b`) holds `u_{ab}^2`.
@@ -350,12 +331,12 @@ seedDipoleSites pPos pNeg amp =
 
 ||| Seeds an oscillating bound polarity dipole (`+amp` at `posVec`, `-amp` at `negVec`).
 public export
-seedBoundDipole : {n : Nat} -> Ord k => AxisBasis k -> (posVec, negVec : Vect n Integer) -> (amp : BoxInt) -> EvolutionState k
+seedBoundDipole : {n : Nat} -> Ord k => AxisBasis k -> (posVec, negVec : Space n) -> (amp : BoxInt) -> EvolutionState k
 seedBoundDipole ax posVec negVec amp =
   seedDipoleSites (mkCoord ax posVec) (mkCoord ax negVec) amp
 
 public export
-transverseEnv4 : Ord k => (Integer -> k) -> (t0 : Integer) -> (halfA, fullA : BoxInt) -> Box BoxInt k
+transverseEnv4 : Ord k => (SignedCoord -> k) -> (t0 : SignedCoord) -> (halfA, fullA : BoxInt) -> Box BoxInt k
 transverseEnv4 mkAxisCoord t0 halfA fullA =
   addAtKeyBox (mkAxisCoord (t0 - 1)) halfA $
   addAtKeyBox (mkAxisCoord t0)       fullA $
@@ -366,34 +347,33 @@ transverseEnv4 mkAxisCoord t0 halfA fullA =
 public export
 seedDirectedPulse :
   {n : Nat} ->
-  Ord k =>
+  MonoidCoord k =>
   AxisBasis k ->
-  (center : Vect (S n) Integer) ->
+  (center : Space (S n)) ->
   (transAxis : Fin (S n)) ->
   (amp : BoxInt) ->
   EvolutionState k
-seedDirectedPulse ax center transAxis amp =
-  let x0        = head center
-      t0        = index transAxis center
-      baseTrans = replaceAt FZ 0 center
+seedDirectedPulse ax center@(x0 :: rest) transAxis amp =
+  let t0        = indexSpace transAxis center
+      baseTrans = ZeroZ :: rest
       halfA     = tdiv2Box amp
-      tEnv      = transverseEnv4 (\t => mkCoord ax (replaceAt transAxis t baseTrans)) t0 halfA amp
-      e1        = mkCoord ax [x0 - 2]
-      e2        = mkCoord ax [x0 - 1]
-      e3        = mkCoord ax [x0]
-      e4        = mkCoord ax [x0 + 1]
-      e5        = mkCoord ax [x0 + 2]
+      tEnv      = transverseEnv4 (\t => mkCoord ax (replaceSpace transAxis t baseTrans)) t0 halfA amp
+      e1        = mkCoord ax (the (Space 1) [x0 - 2])
+      e2        = mkCoord ax (the (Space 1) [x0 - 1])
+      e3        = mkCoord ax (the (Space 1) [x0])
+      e4        = mkCoord ax (the (Space 1) [x0 + 1])
+      e5        = mkCoord ax (the (Space 1) [x0 + 2])
       rowPol    = setMaxelEdge e2 e2 (MkBoxInt (-1)) $
                   setMaxelEdge e4 e4 (MkBoxInt 1)    $
                   setMaxelEdge e1 e2 (MkBoxInt (-2)) $
                   setMaxelEdge e2 e3 (MkBoxInt (-2)) $
                   setMaxelEdge e3 e4 (MkBoxInt 2)    $
                   singletonMaxelEdge e4 e5 (MkBoxInt 2)
-  in MkEvolutionState (shiftConvolveMaxel ax.shiftAdd rowPol tEnv) emptyMaxel emptyMaxel
+  in MkEvolutionState (shiftConvolveMaxel rowPol tEnv) emptyMaxel emptyMaxel
 
 ||| Seeds a balanced zero-sum antisymmetric directed-edge flux link `srcVec -> dstVec` with weight `u`.
 public export
-seedEdgeFlux : {n : Nat} -> Ord k => AxisBasis k -> (srcVec, dstVec : Vect n Integer) -> (u : BoxInt) -> EvolutionState k
+seedEdgeFlux : {n : Nat} -> Ord k => AxisBasis k -> (srcVec, dstVec : Space n) -> (u : BoxInt) -> EvolutionState k
 seedEdgeFlux ax srcVec dstVec u =
   MkEvolutionState (singletonMaxelEdge (mkCoord ax srcVec) (mkCoord ax dstVec) u) emptyMaxel emptyMaxel
 
@@ -419,20 +399,19 @@ activeQuadranceSource True  linkCoup pol =
                   then emptyMaxel
                   else if linkCoup == 1
                     then fluxSq
-                    else scaleMaxel (MkBoxInt linkCoup) fluxSq
+                    else scaleM (MkBoxInt linkCoup) fluxSq
   in siteSrc <+> linkSrc
 
 ||| Causal 1-hop retarded interaction-load step across arbitrary-dimension `unitSt` (`c = 1`, `SymForm`).
 public export
 stepCausalLoadMaxel :
-  Ord k =>
-  AxisBasis k ->
+  GroupCoord k =>
   (unitSt : Box BoxInt k) ->
   (lagDiv, decayNum, decayDen : Integer) ->
   (actSrcM : Maxel BoxInt k k SymForm) ->
   (oldLoad : Maxel BoxInt k k SymForm) ->
   Maxel BoxInt k k SymForm
-stepCausalLoadMaxel ax unitSt lagDiv decayNum decayDen actSrcM oldLoad =
+stepCausalLoadMaxel unitSt lagDiv decayNum decayDen actSrcM oldLoad =
   if lagDiv <= 0
     then emptyMaxel
     else
@@ -441,27 +420,27 @@ stepCausalLoadMaxel ax unitSt lagDiv decayNum decayDen actSrcM oldLoad =
           decayed = if isEmptyMaxel oldLoad || decayDen <= 0
                       then emptyMaxel
                       else scaleDivPruneMaxel decayDen minCut
-                             (scaleMaxel (MkBoxInt decayNum)
-                                (shiftConvolveMaxel ax.shiftAdd oldLoad unitSt))
+                             (scaleM (MkBoxInt decayNum)
+                                (shiftConvolveMaxel oldLoad unitSt))
       in decayed <+> pruneMinMaxel minCut actSrcM
 
 ||| Canonical start vertex `s` when `(a, b)` spans an undirected step along `stepDir`.
 public export
-canonLinkStart : Ord k => AxisBasis k -> k -> k -> k -> Maybe k
-canonLinkStart ax stepDir a b =
-  if b == ax.shiftAdd a stepDir then Just a
-  else if a == ax.shiftAdd b stepDir then Just b
+canonLinkStart : GroupCoord k => k -> k -> k -> Maybe k
+canonLinkStart stepDir a b =
+  if b == combine a stepDir then Just a
+  else if a == combine b stepDir then Just b
   else Nothing
 
 ||| Collects strictly active canonical links `(s, s + stepDir)` touching non-zero sites or edges of `pol`.
 public export
-collectAxisLinks : Ord k => AxisBasis k -> k -> Maxel BoxInt k k DiagAntisymForm -> Box BoxInt k
-collectAxisLinks ax stepDir pol =
+collectAxisLinks : GroupCoord k => k -> Maxel BoxInt k k DiagAntisymForm -> Box BoxInt k
+collectAxisLinks stepDir pol =
   foldStoredMaxel
     (\a, b, _, acc =>
        if a == b
-         then setBox a (MkBoxInt 1) (setBox (ax.shiftSub a stepDir) (MkBoxInt 1) acc)
-         else case canonLinkStart ax stepDir a b of
+         then setBox a (MkBoxInt 1) (setBox (coordSub a stepDir) (MkBoxInt 1) acc)
+         else case canonLinkStart stepDir a b of
                 Just s  => setBox s (MkBoxInt 1) acc
                 Nothing => acc)
     BoxLeaf
@@ -488,8 +467,7 @@ linkLoadSum loadM posA posB =
 
 public export
 sweepAxisPass :
-  Ord k =>
-  AxisBasis k ->
+  GroupCoord k =>
   (stepDir : k) ->
   (wantOdd : Bool) ->
   (isOddFn : k -> Bool) ->
@@ -498,12 +476,12 @@ sweepAxisPass :
   (onLink : k -> k -> BoxInt -> BoxInt -> BoxInt -> acc -> acc) ->
   acc ->
   acc
-sweepAxisPass ax stepDir wantOdd isOddFn linksBox getPol onLink initAcc =
+sweepAxisPass stepDir wantOdd isOddFn linksBox getPol onLink initAcc =
   foldBox (\posA, _, acc =>
              if isOddFn posA /= wantOdd
                then acc
                else
-                 let posB = ax.shiftAdd posA stepDir
+                 let posB = combine posA stepDir
                      pol  = getPol acc
                      pA   = lookupMaxel posA posA pol
                      pB   = lookupMaxel posB posB pol
@@ -517,7 +495,7 @@ sweepAxisPass ax stepDir wantOdd isOddFn linksBox getPol onLink initAcc =
 ||| Arbitrary-dimension checkerboard link sweep folding directly over `axesBox : Box BoxInt PureMultiset`.
 public export
 sweepCheckerboard :
-  Ord k =>
+  GroupCoord k =>
   AxisBasis k ->
   Box BoxInt PureMultiset ->
   (getPol : acc -> Maxel BoxInt k k DiagAntisymForm) ->
@@ -528,9 +506,9 @@ sweepCheckerboard ax axesBox getPol onLink acc0 =
   foldBox (\axKey, _, acc =>
              let stepDir = ax.axisStep axKey
                  isOddFn = ax.isOddAxis axKey
-                 links   = collectAxisLinks ax stepDir (getPol acc)
-                 accE    = sweepAxisPass ax stepDir False isOddFn links getPol onLink acc
-             in sweepAxisPass ax stepDir True isOddFn links getPol onLink accE)
+                 links   = collectAxisLinks stepDir (getPol acc)
+                 accE    = sweepAxisPass stepDir False isOddFn links getPol onLink acc
+             in sweepAxisPass stepDir True isOddFn links getPol onLink accE)
           acc0
           axesBox
 
@@ -556,7 +534,7 @@ paceMultiSubTicks (S rem) budget cost bal =
 ||| Blind local `StreamSkip`/`StreamYield` evolution stepper parameterized by `(outerPasses, innerTicks)`.
 public export
 stepDynamicsCore :
-  Ord k =>
+  GroupCoord k =>
   AxisBasis k ->
   (outerPasses, innerTicks : Nat) ->
   (lagDiv, decayNum, decayDen, linkCoup, m0 : Integer) ->
@@ -574,7 +552,7 @@ stepDynamicsCore ax outerPasses innerTicks lagDiv decayNum decayDen linkCoup m0 
           axesBox    = activeAxisAtomsOf ax st.polarityMaxel
           unitSt     = activeUnitAxesOf ax st.polarityMaxel
           actSrc0    = activeQuadranceSource (lagDiv > 0) linkCoup st.polarityMaxel
-          newLoad    = stepCausalLoadMaxel ax unitSt lagDiv decayNum decayDen actSrc0 st.loadMaxel
+          newLoad    = stepCausalLoadMaxel unitSt lagDiv decayNum decayDen actSrc0 st.loadMaxel
           runPasses  : Nat -> PacedPassAcc k -> PacedPassAcc k
           runPasses Z acc = acc
           runPasses (S rem) acc =
@@ -600,7 +578,7 @@ stepDynamicsCore ax outerPasses innerTicks lagDiv decayNum decayDen linkCoup m0 
 ||| Evaluates one blind evolution step under explicit `DynamicsParams`.
 public export
 stepDynamicsWith :
-  Ord k =>
+  GroupCoord k =>
   AxisBasis k ->
   DynamicsParams ->
   EvolutionState k ->
@@ -613,7 +591,7 @@ stepDynamicsWith ax p st =
 ||| Single streaming step over `EvolutionState k` charging `GohFuel` only on `StreamYield`.
 public export
 stepDynamicsStreamWith :
-  Ord k =>
+  GroupCoord k =>
   AxisBasis k ->
   DynamicsParams ->
   EvolutionState k ->
@@ -630,7 +608,7 @@ stepDynamicsStreamWith ax params st =
 public export
 freezeDynamicsStreamWith :
   {0 cap     : Nat} ->
-  Ord k =>
+  GroupCoord k =>
   AxisBasis k ->
   DynamicsParams ->
   (g          : Nat) ->
@@ -645,14 +623,14 @@ freezeDynamicsStreamWith ax params g yFuel sBudget st0 =
 ||| directly over `AxisBasis k` with flux weight `amp` — preserving negative coordinates and 3D/ND axes
 ||| with zero `(Nat, Nat, Nat)` tuple conversion.
 public export
-injectRelicBond : Ord k => AxisBasis k -> EvolutionState k -> Configuration -> BoxInt -> EvolutionState k
+injectRelicBond : GroupCoord k => AxisBasis k -> EvolutionState k -> Configuration -> BoxInt -> EvolutionState k
 injectRelicBond ax u k amp =
   let (posA, posB) =
         case unpackEdgeKey k of
           Just (a, b) => (ax.fromSiteMSet a, ax.fromSiteMSet b)
           Nothing     =>
             let s = ax.fromSiteMSet (projectToSiteMSet k)
-            in (s, ax.shiftAdd s (ax.axisStep (axisNat 0)))
+            in (s, combine s (ax.axisStep (axisNat 0)))
   in u <+> MkEvolutionState (singletonMaxelEdge posA posB amp) emptyMaxel emptyMaxel
 
 ||| Coupled two-multiset boundary flow parameterized by `DynamicsParams`:
@@ -660,7 +638,7 @@ injectRelicBond ax u k amp =
 ||| into `u : EvolutionState k` via `viewAsAntiBox eSrc`, decoupling into closed evolution once `eSrc == []`.
 public export
 stepCoupledSourceFlow :
-  Ord k =>
+  GroupCoord k =>
   AxisBasis k ->
   DynamicsParams ->
   (qAmp : BoxInt) ->
@@ -681,7 +659,7 @@ stepCoupledSourceFlow ax params qAmp (u, eSrc) =
 ||| across any `seam : Maxel BoxInt k k DiagAntisymForm` boundary mask (`maskByMaxel`, zero global oracle).
 public export
 stepCoupledUniversePair :
-  Ord k =>
+  GroupCoord k =>
   AxisBasis k ->
   DynamicsParams ->
   (seam : Maxel BoxInt k k DiagAntisymForm) ->
@@ -693,10 +671,9 @@ stepCoupledUniversePair ax params seam qAmp (uA, uB) =
         if w >= qAmp then qAmp
         else if w <= negate qAmp then negate qAmp
         else tdiv2Box w
-      deltaPol = mapPruneMaxel clampQ (maskByMaxel (subMaxel uA.polarityMaxel uB.polarityMaxel) seam)
+      deltaPol = mapPruneMaxel clampQ (maskByMaxel (subM uA.polarityMaxel uB.polarityMaxel) seam)
       deltaSt  = MkEvolutionState deltaPol emptyMaxel emptyMaxel
-      negSt    = MkEvolutionState (negateMaxel deltaPol) emptyMaxel emptyMaxel
-      (nA, (yA, sA)) = stepDynamicsWith ax params (uA <+> negSt)
+      (nA, (yA, sA)) = stepDynamicsWith ax params (subM uA deltaSt)
       (nB, (yB, sB)) = stepDynamicsWith ax params (uB <+> deltaSt)
   in if yA + yB == 0 && sA + sB == 0
        then (StreamDone, 0, 0)
@@ -708,8 +685,10 @@ stepCoupledUniversePair ax params seam qAmp (uA, uB) =
 
 public export
 0 prfAntisymSingleEdge :
-  (let p0 = FinScBox.Interfaces.fromIntegers [0, 0]
-       p1 = FinScBox.Interfaces.fromIntegers [1, 0]
+  (let p0 : Space 2
+       p0 = [0, 0]
+       p1 : Space 2
+       p1 = [1, 0]
        e  = FinScBox.Box.singletonMaxelEdge {form = AntisymForm} p0 p1 (MkBoxInt 12)
    in (FinScBox.Box.maxelNodeCount e == 1) &&
       (FinScBox.Box.traceMaxel e == MkBoxInt 0) &&

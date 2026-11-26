@@ -2,6 +2,8 @@ module FinScDynamics.FlatUniverse
 
 import Control.App
 import FinScBox.BoxInt
+import FinScBox.Interfaces
+import FinScBox.Box
 import FinScBox.Lenses
 import FinScDynamics.Evolution
 
@@ -24,7 +26,7 @@ data FlatBlackBox : (k : Type) -> Type where
 ||| Boots Model A cleanly from the 0D vacuum root `[]` over any coordinate `AxisBasis k`.
 export
 bootFlatWith : AxisBasis k -> App1 e (FlatBlackBox k)
-bootFlatWith basis = App1.pure1 (MkFlatBox basis emptyEvolutionState)
+bootFlatWith basis = App1.pure1 (MkFlatBox basis (MkEvolutionState emptyMaxel emptyMaxel emptyMaxel))
 
 ||| Splits a balanced dipole `+weight` at `posA` and `-weight` at `posB` directly over native coordinates `k`.
 export
@@ -50,7 +52,7 @@ injectFlatState delta (MkFlatBox basis state) =
 ||| Blind local evolution step under explicit `DynamicsParams`.
 export
 stepFlatWith :
-  Ord k =>
+  GroupCoord k =>
   DynamicsParams ->
   (1 u : FlatBlackBox k) ->
   App1 e (FlatBlackBox k)

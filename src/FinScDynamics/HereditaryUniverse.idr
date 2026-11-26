@@ -147,7 +147,7 @@ packSymDipole mkKey maxel acc =
   let m = packSymMaxelToHMSet maxel
   in if m == emptyHMSet
        then acc
-       else addBalancedUnitDipole (mkKey m) (mkKey (negHMSet m)) acc
+       else addBalancedUnitDipole (mkKey m) (mkKey (-m)) acc
 
 public export
 hasSignedUnitPartner : (oppK : Configuration) -> (mult : BoxInt) -> Box BoxInt Configuration -> Bool
@@ -213,19 +213,19 @@ verifyRootBalancedDipoles (MkHMSet rootBox) =
               Just (a, b) => hasBalancedPartner (mkEdgeKey b a) mult rootBox
               Nothing =>
                 case unpackLoadKey entry of
-                  Just loadM => hasSignedUnitPartner (mkLoadKey (negHMSet loadM)) mult rootBox
+                  Just loadM => hasSignedUnitPartner (mkLoadKey (-loadM)) mult rootBox
                   Nothing =>
                     case unpackThrottleKey entry of
-                      Just thrM => hasSignedUnitPartner (mkThrottleKey (negHMSet thrM)) mult rootBox
+                      Just thrM => hasSignedUnitPartner (mkThrottleKey (-thrM)) mult rootBox
                       Nothing   => True)
          rootBox
 
-||| Model B closed sweep dispatcher under explicit `DynamicsParams`.
+||| Model B closed sweep dispatcher under explicit `DynamicsParams` and `minDim` base axes.
 public export
-stepHereditaryWithRoot : DynamicsParams -> Configuration -> Configuration
+stepHereditaryWithRoot : {default 2 minDim : Nat} -> DynamicsParams -> Configuration -> Configuration
 stepHereditaryWithRoot params root =
   let unp      = unpackRootToEvolutionState root
-      (st1, _) = stepDynamicsWith (pureMSetBasis 2) params unp.stateData
+      (st1, _) = stepDynamicsWith (pureMSetBasis minDim) params unp.stateData
   in packEvolutionStateToRoot unp.keptNonField st1
 
 public export
@@ -287,11 +287,12 @@ injectHereditaryState delta (MkHereditaryBox root) =
 ||| Blind local evolution step directly inside `root : Configuration` under explicit `DynamicsParams`.
 export
 stepHereditaryWith :
+  {default 2 minDim : Nat} ->
   DynamicsParams ->
   (1 u : HereditaryBlackBox) ->
   App1 e HereditaryBlackBox
 stepHereditaryWith params (MkHereditaryBox root) =
-  App1.pure1 (MkHereditaryBox (stepHereditaryWithRoot params root))
+  App1.pure1 (MkHereditaryBox (stepHereditaryWithRoot {minDim} params root))
 
 ||| Universal non-perturbing external projection (`0 same : uOut = uIn`), observer-agnostic
 ||| across `FinSc-Lens` (`applyExternalLens lens`), `FinSc-Dihedron` frames, or raw readouts.
