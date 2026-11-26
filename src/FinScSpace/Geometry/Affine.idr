@@ -298,6 +298,34 @@ archimedesQuadreaSym q1 q2 q3 =
   let s = q1 + q2 + q3
   in s * s - fromInteger 2 * (sq q1 + sq q2 + sq q3)
 
+||| Archimedes' quadrea of triangle `(0, v1, v2)` under any `SymForm` metric `g`.
+public export
+triangleQuadrea : Ord k => Maxel BoxInt k k SymForm -> (v1, v2 : Box BoxInt k) -> BoxInt
+triangleQuadrea g v1 v2 =
+  archimedesQuadrea (metricQuadrance g v1) (metricQuadrance g v2) (metricQuadrance g (subM v2 v1))
+
+||| Intrinsic scaled (`2 * G`) 3x3 symmetric vertex Gram `Maxel` from 3 spoke quadrances
+||| `(q01, q02, q03)` and 3 opposite triangle-base quadrances `(q12, q23, q31)`.
+public export
+gramFromQuadrances3 : (q01, q02, q03, q12, q23, q31 : BoxInt) -> Maxel BoxInt (Fin 3) (Fin 3) SymForm
+gramFromQuadrances3 q01 q02 q03 q12 q23 q31 =
+  setMaxelEdge FZ (FS FZ) (q01 + q02 - q12) $
+  setMaxelEdge FZ (FS (FS FZ)) (q01 + q03 - q31) $
+  setMaxelEdge (FS FZ) (FS (FS FZ)) (q02 + q03 - q23) $
+  diagEmbedMaxel (vec3Box (2 * q01) (2 * q02) (2 * q03))
+
+||| Exact 3x3 determinant of a symmetric `Fin 3` `Maxel` (`> 0` spherical, `0` flat, `< 0` saddle).
+public export
+detSymMaxel3 : Maxel BoxInt (Fin 3) (Fin 3) SymForm -> BoxInt
+detSymMaxel3 m =
+  let a = lookupMaxel FZ FZ m
+      b = lookupMaxel FZ (FS FZ) m
+      c = lookupMaxel FZ (FS (FS FZ)) m
+      d = lookupMaxel (FS FZ) (FS FZ) m
+      e = lookupMaxel (FS FZ) (FS (FS FZ)) m
+      f = lookupMaxel (FS (FS FZ)) (FS (FS FZ)) m
+  in a * d * f + 2 * b * c * e - a * e * e - d * c * c - f * b * b
+
 --------------------------------------------------------------------------------
 -- 4. COMPILE-TIME `QTT 0` UNIVERSAL AFFINE & CHROMOGEOMETRY PROOFS
 --------------------------------------------------------------------------------

@@ -61,6 +61,41 @@ triangleSpreads g v1 v2 =
   let v3 = subM v2 v1
   in (spreadBetween g v2 v3, spreadBetween g v1 v3, spreadBetween g v1 v2)
 
+||| Rational cross `c_g(u, v) = (<u, v>_g)^2 / (Q_g(u) * Q_g(v)) = 1 - s_g(u, v)` (`= gamma^2` under `redMetric`).
+public export
+crossBetween : Ord k => Maxel BoxInt k k SymForm -> Box BoxInt k -> Box BoxInt k -> Proportion
+crossBetween g u v =
+  let gm  = gramMaxel2 g u v
+      g01 = lookupMaxel FZ (FS FZ) gm
+      qU  = lookupMaxel FZ FZ gm
+      qV  = lookupMaxel (FS FZ) (FS FZ) gm
+  in MkProportion (g01 * g01) (qU * qV)
+
+||| Intrinsic spread computed purely from triangle quadrances `(q1, q2, q3)` (coordinate-free).
+public export
+spreadFromQuadrances : (q1, q2, q3 : BoxInt) -> Proportion
+spreadFromQuadrances q1 q2 q3 = MkProportion (archimedesQuadrea q1 q2 q3) (4 * q1 * q2)
+
+||| Intrinsic cross computed purely from triangle quadrances `(q1, q2, q3)` (`(q1 + q2 - q3)^2 / (4 q1 q2)`).
+public export
+crossFromQuadrances : (q1, q2, q3 : BoxInt) -> Proportion
+crossFromQuadrances q1 q2 q3 = MkProportion (sq (q1 + q2 - q3)) (4 * q1 * q2)
+
+||| Triple Spread residual `archimedesQuadrea s1 s2 s3 - 4 s1 s2 s3` (0 on collinear/coplanar triples).
+public export
+tripleSpreadResidual : (Num r, Neg r) => r -> r -> r -> r
+tripleSpreadResidual s1 s2 s3 = archimedesQuadrea s1 s2 s3 - fromInteger 4 * s1 * s2 * s3
+
+||| Exact denominator-cleared test for Wildberger's Triple Spread Law across three affine `Proportion`s.
+public export
+isTripleSpreadClosed : Proportion -> Proportion -> Proportion -> Bool
+isTripleSpreadClosed s1@(MkProportion n1 d1) s2@(MkProportion n2 d2) s3@(MkProportion n3 d3) =
+  isAffineRatio s1 && isAffineRatio s2 && isAffineRatio s3 &&
+  let a = n1 * d2 * d3
+      b = n2 * d1 * d3
+      c = n3 * d1 * d2
+  in archimedesQuadrea a b c == 4 * n1 * n2 * n3 * d1 * d2 * d3
+
 --------------------------------------------------------------------------------
 -- 2. COMPILE-TIME `QTT 0` UNIVERSAL SPREAD LAW, CROSS LAW & TRIPLE SPREAD LAW
 --------------------------------------------------------------------------------

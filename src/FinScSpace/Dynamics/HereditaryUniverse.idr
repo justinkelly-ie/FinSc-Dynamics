@@ -172,6 +172,10 @@ record RootUnpackAcc where
   stateData    : EvolutionState PureMultiset
 
 public export
+Eq RootUnpackAcc where
+  a == b = a.keptNonField == b.keptNonField && a.stateData == b.stateData
+
+public export
 decodeRootEntry : Configuration -> BoxInt -> (Box BoxInt Configuration, EvolutionState PureMultiset)
 decodeRootEntry entry mult =
   if isSiteKey entry

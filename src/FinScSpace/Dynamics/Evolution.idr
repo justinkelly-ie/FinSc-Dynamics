@@ -91,6 +91,14 @@ Ord k => Eq (EvolutionState k) where
     a.loadMaxel == b.loadMaxel &&
     a.throttleMaxel == b.throttleMaxel
 
+||| Sterling recognition predicate certifying canonical AVL/half-storage invariants across all 3 `Maxel` channels.
+public export
+isCanonicalEvolutionState : Ord k => EvolutionState k -> Bool
+isCanonicalEvolutionState st =
+  isCanonicalMaxel st.polarityMaxel &&
+  isCanonicalMaxel st.loadMaxel &&
+  isCanonicalMaxel st.throttleMaxel
+
 public export
 Ord k => Semigroup (EvolutionState k) where
   (<+>) a b =
@@ -349,6 +357,14 @@ record PacedPassAcc (k : Type) where
   ppThrottle : Maxel BoxInt k k SymForm
   ppYields   : Nat
   ppSkips    : Nat
+
+public export
+Ord k => Eq (PacedPassAcc k) where
+  a == b =
+    a.ppPolarity == b.ppPolarity &&
+    a.ppThrottle == b.ppThrottle &&
+    a.ppYields == b.ppYields &&
+    a.ppSkips == b.ppSkips
 
 public export
 paceMultiSubTicks : (subTicks : Nat) -> (budget, cost : Integer) -> BoxInt -> (Nat, Nat, BoxInt)
