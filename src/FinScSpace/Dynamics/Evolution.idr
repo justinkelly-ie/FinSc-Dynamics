@@ -74,6 +74,16 @@ Eq DynamicsParams where
     a.dpLinkCoup == b.dpLinkCoup
 
 public export
+Show DynamicsParams where
+  show p =
+    "DynamicsParams(mode=" ++ show p.dpMode ++
+    ", m0=" ++ show p.dpGenM0 ++
+    ", lagDiv=" ++ show p.dpLagDiv ++
+    ", cutDiv=" ++ show p.dpLoadCutDiv ++
+    ", decay=" ++ show p.dpDecayNum ++ "/" ++ show p.dpDecayDen ++
+    ", coup=" ++ show p.dpLinkCoup ++ ")"
+
+public export
 canonDynamicsParams : StepMode -> DynamicsParams
 canonDynamicsParams ModeLinear =
   MkDynamicsParams ModeLinear 7 0 canonLoadCutDiv canonDecayNum canonDecayDen 0
@@ -97,6 +107,13 @@ Ord k => Eq (EvolutionState k) where
     a.polarityMaxel == b.polarityMaxel &&
     a.loadMaxel == b.loadMaxel &&
     a.throttleMaxel == b.throttleMaxel
+
+public export
+Show k => Show (EvolutionState k) where
+  show s =
+    "EvolutionState(pol=" ++ show s.polarityMaxel ++
+    ", load=" ++ show s.loadMaxel ++
+    ", thr=" ++ show s.throttleMaxel ++ ")"
 
 ||| Sterling recognition predicate certifying canonical AVL/half-storage invariants across all 3 `Maxel` channels.
 public export
@@ -372,6 +389,14 @@ Ord k => Eq (PacedPassAcc k) where
     a.ppThrottle == b.ppThrottle &&
     a.ppYields == b.ppYields &&
     a.ppSkips == b.ppSkips
+
+public export
+Show k => Show (PacedPassAcc k) where
+  show a =
+    "PacedPassAcc(pol=" ++ show a.ppPolarity ++
+    ", thr=" ++ show a.ppThrottle ++
+    ", yields=" ++ show a.ppYields ++
+    ", skips=" ++ show a.ppSkips ++ ")"
 
 public export
 paceMultiSubTicks : (subTicks : Nat) -> (budget, cost : BoxInt) -> BoxInt -> (Nat, Nat, BoxInt)

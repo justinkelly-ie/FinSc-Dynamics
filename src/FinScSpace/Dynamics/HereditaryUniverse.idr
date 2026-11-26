@@ -176,6 +176,12 @@ Eq RootUnpackAcc where
   a == b = a.keptNonField == b.keptNonField && a.stateData == b.stateData
 
 public export
+Show RootUnpackAcc where
+  show u =
+    "RootUnpackAcc(kept=" ++ show u.keptNonField ++
+    ", state=" ++ show u.stateData ++ ")"
+
+public export
 decodeRootEntry : Configuration -> BoxInt -> (Box BoxInt Configuration, EvolutionState PureMultiset)
 decodeRootEntry entry mult =
   if isSiteKey entry
@@ -245,7 +251,7 @@ checkTagFreePackUnpackRoundTrip =
       st0   = MkEvolutionState (actDp.polarityMaxel <+> edgeF) loadB thrB
       root0 = packEvolutionStateToRoot BoxLeaf st0
       st1   = (unpackRootToEvolutionState root0).stateData
-  in (unwrapBox (sumHMSet root0) == 0) &&
+  in (sumHMSet root0 == 0) &&
      verifyRootBalancedDipoles root0 &&
      isSymMaxel st1.loadMaxel &&
      (treeSizeNonZero (activeAxisAtomsOf (pureMSetBasis 2) st1.polarityMaxel) == 3) &&
@@ -336,5 +342,5 @@ prfFiveShapesDisjoint = Refl
 public export
 0 prfTagFreeActiveVertexZeroSum :
   (let root0 = packEvolutionStateToRoot BoxLeaf (seedBoundDipole (pureMSetBasis 2) [0, 0] [0, 1] 10)
-   in unwrapBox (sumHMSet root0) == 0) = True
+   in sumHMSet root0 == 0) = True
 prfTagFreeActiveVertexZeroSum = Refl

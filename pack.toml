@@ -1,0 +1,9 @@
+[package]
+name = "FinSc-Space"
+version = "0.2.0"
+ipkg = "FinSc-Space.ipkg"
+
+[custom.all.FinSc-Box]
+type = "local"
+path = "../FinSc-Box"
+ipkg = "FinSc-Box.ipkg"
