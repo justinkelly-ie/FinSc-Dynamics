@@ -19,8 +19,8 @@
 
 ## Modules
 
-- [`Evolution.idr`](src/FinScDynamics/Evolution.idr) — `Configuration` (`PureMultiset`), `DynamicsParams` (`canonDynamicsParams`), `EvolutionState`, `PolarityMaxel`, `QuadranceMaxel` (`quadranceOf`), `Coord2` & `Coord3` bases, causal 1-hop `loadMaxel`, Bresenham `throttleMaxel`, `seedExcitation`, `seedDirectedPulse`, `seedBoundDipole`, `stepDynamicsWith`, `stepCoupledSourceFlow`, and `stepCoupledUniversePair`.
-- [`FlatUniverse.idr`](src/FinScDynamics/FlatUniverse.idr) — Polymorphic linear `App1` `FlatBlackBox k` (`FlatBlackBox Coord2`, `FlatBlackBox Coord3`).
+- [`Evolution.idr`](src/FinScDynamics/Evolution.idr) — `Configuration` (`PureMultiset`), `DynamicsParams` (`canonDynamicsParams`), `EvolutionState`, `Maxel` (`DiagAntisymForm` / `SymForm`), `quadranceOf`, `Space n` (`spaceBasis`) & `PureMultiset` (`pureMSetBasis`) bases, causal 1-hop `loadMaxel`, Bresenham `throttleMaxel`, `seedDipoleSites`, `seedEdgeFlux`, `seedDirectedPulse`, `seedBoundDipole`, `stepDynamicsWith`, `stepDynamicsStreamWith`, `stepCoupledSourceFlow`, and `stepCoupledUniversePair`.
+- [`FlatUniverse.idr`](src/FinScDynamics/FlatUniverse.idr) — Polymorphic linear `App1` `FlatBlackBox k` (`FlatBlackBox (Space n)`).
 - [`HereditaryUniverse.idr`](src/FinScDynamics/HereditaryUniverse.idr) — 5-shape zero-tag `Configuration` root codec (`mkLoadKey`, `mkThrottleKey`, `mkLocalizedKey`) and linear `App1` `HereditaryBlackBox` with observer-agnostic `observeHereditaryPure`.
 
 ## Building & Installing
