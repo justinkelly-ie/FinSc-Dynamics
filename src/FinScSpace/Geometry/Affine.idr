@@ -213,11 +213,6 @@ public export
 vec3Box : BoxInt -> BoxInt -> BoxInt -> Box BoxInt (Fin 3)
 vec3Box t r s = setBox (FS (FS FZ)) s (setBox (FS FZ) r (singletonBox (the (Fin 3) FZ) t))
 
-||| Converts any `Space n` displacement into a sparse `Box BoxInt (Fin n)`.
-public export
-spaceToFinBox : {n : Nat} -> Space n -> Box BoxInt (Fin n)
-spaceToFinBox = foldSpaceWithFin (\i, c, acc => setBox i (signedToBoxInt c) acc) BoxLeaf
-
 ||| Canonical symmetric quadrance `Maxel` (`SymForm`) of `pol : Maxel BoxInt k k DiagAntisymForm`:
 ||| diagonal `(a, a)` holds `2 * p(a)^2` and off-diagonal `(a, b)` (`a < b`) holds `u_{ab}^2`.
 public export
@@ -252,30 +247,28 @@ detSymMaxel2 m =
       g11 = lookupMaxel (FS FZ) (FS FZ) m
   in g00 * g11 - g01 * g01
 
-||| Planar Euclidean (Blue) metric `diag(+1, +1)` (`Q_b = dx^2 + dy^2`).
 public export
-blueMetric2 : Maxel BoxInt (Fin 2) (Fin 2) SymForm
-blueMetric2 = diagEmbedMaxel (vec2Box 1 1)
+tabulateFinBox : {n : Nat} -> (Fin n -> BoxInt) -> Box BoxInt (Fin n)
+tabulateFinBox {n} f = go n id BoxLeaf
+  where
+    go : (k : Nat) -> (Fin k -> Fin n) -> Box BoxInt (Fin n) -> Box BoxInt (Fin n)
+    go Z     _    acc = acc
+    go (S k) lift acc = go k (lift . FS) (setBox (lift FZ) (f (lift FZ)) acc)
 
-||| Planar Minkowski (Red) metric `diag(+1, -1)` (`Q_r = dx^2 - dy^2`).
+||| Dimension-polymorphic Euclidean (Blue) metric `diag(+1, ..., +1)` over `Fin n`.
 public export
-redMetric2 : Maxel BoxInt (Fin 2) (Fin 2) SymForm
-redMetric2 = diagEmbedMaxel (vec2Box 1 (-1))
+blueMetric : {n : Nat} -> Maxel BoxInt (Fin n) (Fin n) SymForm
+blueMetric = diagEmbedMaxel (tabulateFinBox (\_ => 1))
+
+||| Dimension-polymorphic Lorentz / Minkowski (Red) metric `diag(+1, -1, ..., -1)` over `Fin n`.
+public export
+redMetric : {n : Nat} -> Maxel BoxInt (Fin n) (Fin n) SymForm
+redMetric = diagEmbedMaxel (tabulateFinBox (\i => case i of FZ => 1; FS _ => -1))
 
 ||| Planar Null (Green) metric `[[0, 1], [1, 0]]` (`Q_g = 2 dx dy`).
 public export
 greenMetric2 : Maxel BoxInt (Fin 2) (Fin 2) SymForm
 greenMetric2 = singletonMaxelEdge {a = Fin 2, b = Fin 2, form = SymForm} FZ (FS FZ) 1
-
-||| 3D Euclidean (Blue) metric `diag(+1, +1, +1)` (`SO(3; Q)` signature).
-public export
-blueMetric3 : Maxel BoxInt (Fin 3) (Fin 3) SymForm
-blueMetric3 = diagEmbedMaxel (vec3Box 1 1 1)
-
-||| (1+2)D Minkowski (Red) metric `diag(+1, -1, -1)` (`SO(1, 2; Q)` signature).
-public export
-redMetric3 : Maxel BoxInt (Fin 3) (Fin 3) SymForm
-redMetric3 = diagEmbedMaxel (vec3Box 1 (-1) (-1))
 
 ||| Squaring helper keeping polynomial expressions compact.
 public export
@@ -290,13 +283,6 @@ archimedesQuadrea : (Num r, Neg r) => r -> r -> r -> r
 archimedesQuadrea q1 q2 q3 =
   let d = q1 + q2 - q3
   in fromInteger 4 * q1 * q2 - d * d
-
-||| Symmetric form of Archimedes' quadrea polynomial: `(Q1 + Q2 + Q3)^2 - 2 (Q1^2 + Q2^2 + Q3^2)`.
-public export
-archimedesQuadreaSym : (Num r, Neg r) => r -> r -> r -> r
-archimedesQuadreaSym q1 q2 q3 =
-  let s = q1 + q2 + q3
-  in s * s - fromInteger 2 * (sq q1 + sq q2 + sq q3)
 
 ||| Archimedes' quadrea of triangle `(0, v1, v2)` under any `SymForm` metric `g`.
 public export
@@ -361,10 +347,12 @@ prfEdgeKeyRoundTrip = Refl
 ||| Universal `QTT 0` equivalence of symmetric and polarized Archimedes forms in `Z[q1, q2, q3]`.
 public export
 0 prfArchimedesSymmetryUniversal :
-  (let q1 = polyVar {n = 3} FZ
-       q2 = polyVar {n = 3} (FS FZ)
-       q3 = polyVar {n = 3} (FS (FS FZ))
-   in archimedesQuadreaSym q1 q2 q3 == archimedesQuadrea q1 q2 q3) = True
+  (let q1      = polyVar {n = 3} FZ
+       q2      = polyVar {n = 3} (FS FZ)
+       q3      = polyVar {n = 3} (FS (FS FZ))
+       s       = q1 + q2 + q3
+       symForm = s * s - fromInteger 2 * (sq q1 + sq q2 + sq q3)
+   in symForm == archimedesQuadrea q1 q2 q3) = True
 prfArchimedesSymmetryUniversal = Refl
 
 ||| Universal `QTT 0` proof of Wildberger's Triple Quad Formula over all commutative rings:

@@ -76,16 +76,6 @@ public export
 spreadFromQuadrances : (q1, q2, q3 : BoxInt) -> Proportion
 spreadFromQuadrances q1 q2 q3 = MkProportion (archimedesQuadrea q1 q2 q3) (4 * q1 * q2)
 
-||| Intrinsic cross computed purely from triangle quadrances `(q1, q2, q3)` (`(q1 + q2 - q3)^2 / (4 q1 q2)`).
-public export
-crossFromQuadrances : (q1, q2, q3 : BoxInt) -> Proportion
-crossFromQuadrances q1 q2 q3 = MkProportion (sq (q1 + q2 - q3)) (4 * q1 * q2)
-
-||| Triple Spread residual `archimedesQuadrea s1 s2 s3 - 4 s1 s2 s3` (0 on collinear/coplanar triples).
-public export
-tripleSpreadResidual : (Num r, Neg r) => r -> r -> r -> r
-tripleSpreadResidual s1 s2 s3 = archimedesQuadrea s1 s2 s3 - fromInteger 4 * s1 * s2 * s3
-
 ||| Exact denominator-cleared test for Wildberger's Triple Spread Law across three affine `Proportion`s.
 public export
 isTripleSpreadClosed : Proportion -> Proportion -> Proportion -> Bool
@@ -146,8 +136,8 @@ prfTripleSpreadBlueAndRedUniversal = Refl
 --------------------------------------------------------------------------------
 
 ||| Unified 4-component rotor `(x, v)` in `P^3(Q)`:
-||| - under `blueMetric3` (`diag(+1, +1, +1)`): rational Quaternions / `SO(3; Q)` spatial rotations
-||| - under `redMetric3`  (`diag(+1, -1, -1)`): Wildberger Dihedrons / `SO(1, 2; Q)` Lorentz frames
+||| - under `blueMetric` (`diag(+1, +1, +1)`): rational Quaternions / `SO(3; Q)` spatial rotations
+||| - under `redMetric`  (`diag(+1, -1, -1)`): Wildberger Dihedrons / `SO(1, 2; Q)` Lorentz frames
 public export
 record Rotor where
   constructor MkRotor
@@ -185,10 +175,6 @@ public export
 idRotor : Rotor
 idRotor = MkRotor 1 BoxLeaf
 
-public export
-inverseRotor : Rotor -> Rotor
-inverseRotor r = MkRotor r.rotorScalar (negateBox r.rotorBivector)
-
 ||| Half-stored antisymmetric cross-product `Maxel` `[v]_x` over `Fin 3`.
 public export
 skewMaxel3 : Box BoxInt (Fin 3) -> Maxel BoxInt (Fin 3) (Fin 3) AntisymForm
@@ -218,7 +204,7 @@ public export
 skewMaxelG : Maxel BoxInt (Fin 3) (Fin 3) SymForm -> Box BoxInt (Fin 3) -> Maxel BoxInt (Fin 3) (Fin 3) GeneralForm
 skewMaxelG g v = composeMaxel (toGeneralMaxel g) (toGeneralMaxel (skewMaxel3 v))
 
-||| Metric-parameterized rotor composition `r2 * r1` (Quaternion product under `blueMetric3`; Dihedron product under `redMetric3`).
+||| Metric-parameterized rotor composition `r2 * r1` (Quaternion product under `blueMetric`; Dihedron product under `redMetric`).
 public export
 composeRotor : Maxel BoxInt (Fin 3) (Fin 3) SymForm -> Rotor -> Rotor -> Rotor
 composeRotor g r2 r1 =
@@ -240,7 +226,7 @@ rotorActionMaxel g r =
       skwP = scaleM (MkBoxInt 2 * r.rotorScalar) (skewMaxelG g r.rotorBivector)
   in id3 <+> symP <+> skwP
 
-||| Five-way causal classification of a `redMetric3` `(2+1)D` Lorentz `Rotor`.
+||| Five-way causal classification of a `redMetric` `(2+1)D` Lorentz `Rotor`.
 public export
 data CausalLorentzType
   = EllipticSpatialRotation
@@ -269,8 +255,8 @@ Show CausalLorentzType where
 public export
 classifyRedRotor : Rotor -> CausalLorentzType
 classifyRedRotor r =
-  let n  = rotorNorm redMetric3 r
-      qv = metricQuadrance redMetric3 r.rotorBivector
+  let n  = rotorNorm redMetric r
+      qv = metricQuadrance redMetric r.rotorBivector
   in if boxIsZero n then SingularNullRotor
      else if boxIsZero r.rotorScalar then InvolutionHalfTurn
      else if qv > 0 then EllipticSpatialRotation
@@ -359,11 +345,11 @@ quatUnitK = toAntisymMaxel (kroneckerMaxel2 unitMatJ unitMatR)
 public export
 0 prfBlueRotorQuadranceAndReflection :
   (let r1 = MkRotor 1 (vec3Box 1 0 0)
-       m1 = rotorActionMaxel blueMetric3 r1
+       m1 = rotorActionMaxel blueMetric r1
        v0 = vec3Box 3 (-2) 5
        w0 = actMaxelR m1 v0
-       n1 = rotorNorm blueMetric3 r1
-   in (metricQuadrance blueMetric3 w0 == n1 * n1 * metricQuadrance blueMetric3 v0) &&
+       n1 = rotorNorm blueMetric r1
+   in (metricQuadrance blueMetric w0 == n1 * n1 * metricQuadrance blueMetric v0) &&
       isSymMaxel FinScSpace.Geometry.Projective.meanReflectionScaled3 &&
       (actMaxelR (toGeneralMaxel FinScSpace.Geometry.Projective.meanReflectionScaled3)
                  (actMaxelR (toGeneralMaxel FinScSpace.Geometry.Projective.meanReflectionScaled3) v0)
@@ -373,7 +359,7 @@ prfBlueRotorQuadranceAndReflection = Refl
 public export
 0 prfRedBoostFromPythTriple :
   (let b345 = boostFromQuadraticTriple (MkQuadraticTriple 3 4 5)
-       mB   = rotorActionMaxel redMetric3 b345
+       mB   = rotorActionMaxel redMetric b345
        wB   = actMaxelR mB (vec3Box 1 0 0)
    in (wB == vec3Box 90 54 0) &&
       (MkProportion (lookupBox (FS FZ) wB) (lookupBox FZ wB) == MkProportion 3 5)) = True
@@ -383,12 +369,12 @@ public export
 0 prfDihedronMaxel2IsoAndNilpotent :
   (let r1  = boostRotorAxis2 2 1
        r2  = boostRotorAxis1 3 1
-       r12 = composeRotor redMetric3 r2 r1
+       r12 = composeRotor redMetric r2 r1
        d1  = rotorToDihedronMaxel2 r1
        d2  = rotorToDihedronMaxel2 r2
        d12 = rotorToDihedronMaxel2 r12
    in (composeMaxel d2 d1 == d12) &&
-      (detMaxel2 d1 == rotorNorm redMetric3 r1) &&
+      (detMaxel2 d1 == rotorNorm redMetric r1) &&
       (detMaxel2 d12 == detMaxel2 d1 * detMaxel2 d2) &&
       (composeMaxel FinScSpace.Geometry.Projective.epsilonDihedronMaxel2
                     FinScSpace.Geometry.Projective.epsilonDihedronMaxel2 == emptyMaxel)) = True
@@ -396,8 +382,8 @@ prfDihedronMaxel2IsoAndNilpotent = Refl
 
 public export
 0 prfWignerThomasPrecession :
-  (let p12 = composeRotor redMetric3 (boostRotorAxis1 3 1) (boostRotorAxis2 2 1)
-       p21 = composeRotor redMetric3 (boostRotorAxis2 2 1) (boostRotorAxis1 3 1)
+  (let p12 = composeRotor redMetric (boostRotorAxis1 3 1) (boostRotorAxis2 2 1)
+       p21 = composeRotor redMetric (boostRotorAxis2 2 1) (boostRotorAxis1 3 1)
        t12 = lookupBox (the (Fin 3) FZ) p12.rotorBivector
        t21 = lookupBox (the (Fin 3) FZ) p21.rotorBivector
    in (t12 /= 0) && (t12 == negate t21)) = True

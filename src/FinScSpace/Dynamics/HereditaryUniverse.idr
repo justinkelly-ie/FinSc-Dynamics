@@ -226,8 +226,8 @@ verifyRootBalancedDipoles (MkHMSet rootBox) =
 
 ||| Model B closed sweep dispatcher under explicit `DynamicsParams` and `minDim` base axes.
 public export
-stepHereditaryWithRoot : {default 2 minDim : Nat} -> DynamicsParams -> Configuration -> Configuration
-stepHereditaryWithRoot params root =
+stepHereditaryWithRoot : (minDim : Nat) -> DynamicsParams -> Configuration -> Configuration
+stepHereditaryWithRoot minDim params root =
   let unp      = unpackRootToEvolutionState root
       (st1, _) = stepDynamicsWith (pureMSetBasis minDim) params unp.stateData
   in packEvolutionStateToRoot unp.keptNonField st1
@@ -288,15 +288,15 @@ injectHereditaryState :
 injectHereditaryState delta (MkHereditaryBox root) =
   App1.pure1 (MkHereditaryBox (root <+> packEvolutionStateToRoot BoxLeaf delta))
 
-||| Blind local evolution step directly inside `root : Configuration` under explicit `DynamicsParams`.
+||| Blind local evolution step directly inside `root : Configuration` under explicit `DynamicsParams` and `minDim`.
 export
 stepHereditaryWith :
-  {default 2 minDim : Nat} ->
+  (minDim : Nat) ->
   DynamicsParams ->
   (1 u : HereditaryBlackBox) ->
   App1 e HereditaryBlackBox
-stepHereditaryWith params (MkHereditaryBox root) =
-  App1.pure1 (MkHereditaryBox (stepHereditaryWithRoot {minDim} params root))
+stepHereditaryWith minDim params (MkHereditaryBox root) =
+  App1.pure1 (MkHereditaryBox (stepHereditaryWithRoot minDim params root))
 
 ||| Universal non-perturbing external projection (`0 same : uOut = uIn`), observer-agnostic
 ||| across `FinSc-Lens` (`applyExternalLens lens`), projective frames, or raw readouts.
