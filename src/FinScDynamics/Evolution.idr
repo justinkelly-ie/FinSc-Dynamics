@@ -588,7 +588,7 @@ stepDynamicsWith ax p st =
     ModeLinear       => stepDynamicsCore ax 1  1  0          p.dpDecayNum p.dpDecayDen 0            p.dpGenM0 st
     ModeFactor oP iT => stepDynamicsCore ax oP iT p.dpLagDiv p.dpDecayNum p.dpDecayDen p.dpLinkCoup p.dpGenM0 st
 
-||| Single streaming step over `EvolutionState k` charging `GohFuel` only on `StreamYield`.
+||| Single streaming step over `EvolutionState k` charging `GohBound` only on `StreamYield`.
 public export
 stepDynamicsStreamWith :
   GroupCoord k =>
@@ -604,7 +604,7 @@ stepDynamicsStreamWith ax params st =
               else (StreamSkip, 0, sStep)
        else (StreamYield st1, yStep, sStep)
 
-||| Streams `st0` via `freezeStateStreamWith` under explicit `DynamicsParams` and `(yieldFuel : GohFuel cap, stepBudget : Nat)`.
+||| Streams `st0` via `freezeStateStreamWith` under explicit `DynamicsParams` and `(yieldBound : GohBound cap, stepBudget : Nat)`.
 public export
 freezeDynamicsStreamWith :
   {0 cap     : Nat} ->
@@ -612,12 +612,12 @@ freezeDynamicsStreamWith :
   AxisBasis k ->
   DynamicsParams ->
   (g          : Nat) ->
-  (yieldFuel  : GohFuel cap) ->
+  (yieldBound : GohBound cap) ->
   (stepBudget : Nat) ->
   EvolutionState k ->
   (SolidifiedStream (StaticTime (- cast g) (cast cap)) cap (EvolutionState k), Nat)
-freezeDynamicsStreamWith ax params g yFuel sBudget st0 =
-  freezeStateStreamWith g yFuel sBudget (stepDynamicsStreamWith ax params) st0
+freezeDynamicsStreamWith ax params g yBound sBudget st0 =
+  freezeStateStreamWith g yBound sBudget (stepDynamicsStreamWith ax params) st0
 
 ||| Injects any peeled `Configuration` relic key `k` (directed edge `mkEdgeKey a b` or site key `s`)
 ||| directly over `AxisBasis k` with flux weight `amp` — preserving negative coordinates and 3D/ND axes
