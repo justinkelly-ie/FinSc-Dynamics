@@ -1,11 +1,11 @@
-module FinScDynamics.FlatUniverse
+module FinScSpace.Dynamics.FlatUniverse
 
 import Control.App
 import FinScBox.BoxInt
 import FinScBox.Interfaces
 import FinScBox.Box
 import FinScBox.Lenses
-import FinScDynamics.Evolution
+import FinScSpace.Dynamics.Evolution
 
 %default total
 

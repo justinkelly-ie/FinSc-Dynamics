@@ -1,0 +1,17 @@
+package FinSc-Space
+version = 0.2.0
+authors = "Justin"
+brief   = "FinSc-Space: Observer-Free Rational Geometry (Affine & Projective) & Blind Local Evolution"
+
+depends = base >= 0.8.0
+        , linear
+        , FinSc-Box
+
+sourcedir = "src"
+
+modules = FinScSpace.Geometry.Affine
+        , FinScSpace.Geometry.Projective
+        , FinScSpace.Dynamics.Evolution
+        , FinScSpace.Dynamics.FlatUniverse
+        , FinScSpace.Dynamics.HereditaryUniverse
+        , FinScSpace

@@ -1,4 +1,4 @@
-module FinScDynamics.Evolution
+module FinScSpace.Dynamics.Evolution
 
 import FinScBox.BoxInt
 import FinScBox.Interfaces
@@ -7,198 +7,12 @@ import FinScBox.HereditaryMSet
 import FinScBox.Views
 import FinScBox.QuadraticExchange
 import FinScBox.BlackRedZoom
+import public FinScSpace.Geometry.Affine
 
 %default total
 
 --------------------------------------------------------------------------------
--- 1. TIMELESS CONFIGURATION, EMERGENT AXIS ATOMS & DIRECTED EDGE KEYS
---------------------------------------------------------------------------------
-
-||| Timeless snapshot of a physical multiset configuration (`PureMultiset` without `BoxInt` detail).
-public export
-Configuration : Type
-Configuration = PureMultiset
-
-||| Canonical positive scalar axis atom `{ [] : i + 1 }` (`0 -> X`, `1 -> Y`, `2 -> Z`, ...).
-public export
-axisAtom : Nat -> PureMultiset
-axisAtom i = scalarKeyHMSet (natToInteger (S i))
-
-||| If `k` is a positive scalar axis atom `{ [] : i }` (`i >= 1`), returns `Just i`.
-public export
-axisAtomIndex : PureMultiset -> Maybe Integer
-axisAtomIndex (MkHMSet (BoxNode _ BoxLeaf (MkHMSet BoxLeaf) (MkBoxInt i) BoxLeaf)) =
-  if i > 0 then Just i else Nothing
-axisAtomIndex _ = Nothing
-
-public export
-atomToFin : {n : Nat} -> PureMultiset -> Maybe (Fin n)
-atomToFin k =
-  case axisAtomIndex k of
-    Just i  => natToFin (integerToNat (i - 1)) n
-    Nothing => Nothing
-
-||| True iff `k` is an emergent positive scalar axis atom `{ [] : i }` (`i >= 1`).
-public export
-isAxisAtom : PureMultiset -> Bool
-isAxisAtom k =
-  case axisAtomIndex k of
-    Just _  => True
-    Nothing => False
-
-||| True iff every key in `m` is an emergent spatial axis atom `{ [] : i }` (`i >= 1`, including `[]` at the origin).
-public export
-isSiteKey : PureMultiset -> Bool
-isSiteKey (MkHMSet b) = allBox (\k, _ => isAxisAtom k) b
-
-||| Projects any `Configuration` onto its spatial axis-atom components (`isSiteKey`-preserving, signed, ND).
-public export
-projectToSiteMSet : Configuration -> Configuration
-projectToSiteMSet (MkHMSet b) = MkHMSet (filterBox isAxisAtom b)
-
-||| Decodes a single-entry wrapped box `{ k : expectedW }` cleanly without allocation.
-public export
-extractSignedWrap : BoxInt -> PureMultiset -> Maybe PureMultiset
-extractSignedWrap expectedW (MkHMSet (BoxNode _ BoxLeaf k w BoxLeaf)) =
-  if w == expectedW then Just k else Nothing
-extractSignedWrap _ _ = Nothing
-
-||| Decodes `wrapBox k = { k : +1 }` back to `k`.
-public export
-extractWrapBox : PureMultiset -> Maybe PureMultiset
-extractWrapBox = extractSignedWrap (MkBoxInt 1)
-
-||| Extracts the unique key carrying multiplicity `expectedW` in `b`, or `Nothing` if absent/duplicated.
-public export
-extractUniqueSlot : BoxInt -> Box BoxInt PureMultiset -> Maybe PureMultiset
-extractUniqueSlot expectedW b =
-  case foldBox (\k, w, (cnt, res) =>
-                  if w == expectedW then (S cnt, Just k) else (cnt, res))
-               (0, Nothing) b of
-    (1, Just k) => Just k
-    _           => Nothing
-
-||| Pure directed-edge key `{ wrapBox posA : +1, wrapBox posB : -1 }` inside `PureMultiset`.
-public export
-mkEdgeKey : (posA, posB : PureMultiset) -> PureMultiset
-mkEdgeKey posA posB =
-  MkHMSet $ setBox (wrapBox posB) (MkBoxInt (-1))
-          $ singletonBox (wrapBox posA) (MkBoxInt 1)
-
-||| Decoder for pure directed-edge keys `mkEdgeKey posA posB`.
-public export
-unpackEdgeKey : PureMultiset -> Maybe (PureMultiset, PureMultiset)
-unpackEdgeKey entry@(MkHMSet b) =
-  if isSiteKey entry || treeSizeNonZero b /= 2
-    then Nothing
-    else do
-      kSrc <- extractUniqueSlot (MkBoxInt 1) b
-      kDst <- extractUniqueSlot (MkBoxInt (-1)) b
-      a    <- extractWrapBox kSrc
-      d    <- extractWrapBox kDst
-      if isSiteKey a && isSiteKey d && a /= d then Just (a, d) else Nothing
-
---------------------------------------------------------------------------------
--- 2. SPARSE POLARITY & QUADRANCE MAXELS + `Space n` & `PureMultiset` BASES
---------------------------------------------------------------------------------
-
-||| Pure multiset spatial basis shared across `GroupCoord k` coordinates (`Space n` and `PureMultiset`).
-public export
-record AxisBasis (k : Type) where
-  constructor MkAxisBasis
-  baseAxes          : Box BoxInt PureMultiset
-  allowEmergentAxes : Bool
-  axisStep          : PureMultiset -> k
-  isOddAxis         : PureMultiset -> k -> Bool
-  toSiteMSet        : k -> PureMultiset
-  fromSiteMSet      : PureMultiset -> k
-  unitAxes          : Box BoxInt k
-
-public export
-mkPureCoord : {n : Nat} -> Space n -> Configuration
-mkPureCoord =
-  foldSpaceWithFin (\i, c, acc => acc <+> scaleM (signedToBoxInt c) (wrapBox (axisAtom (finToNat i)))) emptyHMSet
-
-public export
-coordAlong : AxisBasis k -> PureMultiset -> k -> Integer
-coordAlong ax axKey pos = unwrapBox (lookupKeyHMSet axKey (ax.toSiteMSet pos))
-
-public export
-mkCoord : {n : Nat} -> AxisBasis k -> Space n -> k
-mkCoord ax = ax.fromSiteMSet . mkPureCoord
-
-public export
-collectSiteAxisAtoms : PureMultiset -> Box BoxInt PureMultiset -> Box BoxInt PureMultiset
-collectSiteAxisAtoms (MkHMSet b) acc0 =
-  supportBox (acc0 <+> filterBox isAxisAtom b)
-
-||| Unions `ax.baseAxes` with all emergent positive axis atoms `{ [] : i }` present in `pol`.
-public export
-activeAxisAtomsOf : AxisBasis k -> Maxel BoxInt k k DiagAntisymForm -> Box BoxInt PureMultiset
-activeAxisAtomsOf ax pol =
-  if not ax.allowEmergentAxes
-    then ax.baseAxes
-    else foldStoredMaxel
-           (\a, b, _, acc =>
-              collectSiteAxisAtoms (ax.toSiteMSet b)
-                (collectSiteAxisAtoms (ax.toSiteMSet a) acc))
-           ax.baseAxes pol
-
-public export
-activeUnitAxesOf : GroupCoord k => AxisBasis k -> Maxel BoxInt k k DiagAntisymForm -> Box BoxInt k
-activeUnitAxesOf ax pol =
-  if not ax.allowEmergentAxes
-    then ax.unitAxes
-    else
-      let atoms = activeAxisAtomsOf ax pol
-      in if atoms == ax.baseAxes
-           then ax.unitAxes
-           else unitStencilBox ax.axisStep atoms
-
-||| Builds an `AxisBasis k` over any `GroupCoord k`.
-public export
-mkAxisBasis :
-  GroupCoord k =>
-  (allowEmergent : Bool) ->
-  (axes          : Box BoxInt PureMultiset) ->
-  (stepFn        : PureMultiset -> k) ->
-  (oddFn         : PureMultiset -> k -> Bool) ->
-  (toMSet        : k -> PureMultiset) ->
-  (fromMSet      : PureMultiset -> k) ->
-  AxisBasis k
-mkAxisBasis allowEmergent axes stepFn oddFn toMSet fromMSet =
-  MkAxisBasis axes allowEmergent stepFn oddFn toMSet fromMSet (unitStencilBox stepFn axes)
-
-public export
-baseAxesN : Nat -> Box BoxInt PureMultiset
-baseAxesN Z     = BoxLeaf
-baseAxesN (S k) = setBox (axisAtom k) (MkBoxInt 1) (baseAxesN k)
-
-||| Dimension-uniform coordinate basis for `Space n` (`1D`, `2D`, `3D`, `ND`).
-public export
-spaceBasis : {n : Nat} -> AxisBasis (Space n)
-spaceBasis {n} =
-  mkAxisBasis
-    False
-    (baseAxesN n)
-    (\axKey => maybe (zeroSpace n) unitSpace (atomToFin axKey))
-    (\axKey, pos => maybe False (\i => isOddSigned (indexSpace i pos)) (atomToFin axKey))
-    mkPureCoord
-    (\m => tabulateSpace (\i => cast (lookupKeyHMSet (axisAtom (finToNat i)) m)))
-
-public export
-pureMSetBasis : Nat -> AxisBasis PureMultiset
-pureMSetBasis dim =
-  mkAxisBasis
-    True
-    (baseAxesN dim)
-    wrapBox
-    (\axKey, pos => isOddBox (lookupKeyHMSet axKey pos))
-    id
-    projectToSiteMSet
-
---------------------------------------------------------------------------------
--- 3. DYNAMICS PARAMETERS, EVOLUTION STATE & DERIVED QUADRANCE REDUCTIONS
+-- 1. DYNAMICS PARAMETERS, EVOLUTION STATE & DERIVED QUADRANCE REDUCTIONS
 --------------------------------------------------------------------------------
 
 public export
@@ -213,6 +27,17 @@ public export
 data StepMode
   = ModeLinear
   | ModeFactor Nat Nat
+
+public export
+Eq StepMode where
+  ModeLinear       == ModeLinear       = True
+  (ModeFactor a b) == (ModeFactor c d) = a == c && b == d
+  _                == _                = False
+
+public export
+Show StepMode where
+  show ModeLinear       = "ModeLinear"
+  show (ModeFactor a b) = "ModeFactor(" ++ show a ++ ", " ++ show b ++ ")"
 
 ||| Parameter bundle governing local quadratic exchange, 1-hop load propagation, and Bresenham throttling:
 ||| - `dpMode`     : `ModeLinear` (`dpLagDiv = 0`) or `ModeFactor outerPasses innerTicks`
@@ -232,6 +57,16 @@ record DynamicsParams where
   dpLinkCoup : Integer
 
 public export
+Eq DynamicsParams where
+  a == b =
+    a.dpMode == b.dpMode &&
+    a.dpGenM0 == b.dpGenM0 &&
+    a.dpLagDiv == b.dpLagDiv &&
+    a.dpDecayNum == b.dpDecayNum &&
+    a.dpDecayDen == b.dpDecayDen &&
+    a.dpLinkCoup == b.dpLinkCoup
+
+public export
 canonDynamicsParams : StepMode -> DynamicsParams
 canonDynamicsParams ModeLinear =
   MkDynamicsParams ModeLinear 7 0 canonDecayNum canonDecayDen 0
@@ -248,6 +83,13 @@ record EvolutionState (k : Type) where
   polarityMaxel : Maxel BoxInt k k DiagAntisymForm
   loadMaxel     : Maxel BoxInt k k SymForm
   throttleMaxel : Maxel BoxInt k k SymForm
+
+public export
+Ord k => Eq (EvolutionState k) where
+  a == b =
+    a.polarityMaxel == b.polarityMaxel &&
+    a.loadMaxel == b.loadMaxel &&
+    a.throttleMaxel == b.throttleMaxel
 
 public export
 Ord k => Semigroup (EvolutionState k) where
@@ -280,14 +122,6 @@ Ord k => MultisetAlgebra BoxInt (EvolutionState k) where
     (a.polarityMaxel <.> b.polarityMaxel) +
     (a.loadMaxel <.> b.loadMaxel) +
     (a.throttleMaxel <.> b.throttleMaxel)
-
-||| Canonical symmetric quadrance `Maxel` (`SymForm`) of `pol : Maxel BoxInt k k DiagAntisymForm`:
-||| diagonal `(a, a)` holds `2 * p(a)^2` and off-diagonal `(a, b)` (`a < b`) holds `u_{ab}^2`.
-public export
-quadranceOf : Ord k => Maxel BoxInt k k DiagAntisymForm -> Maxel BoxInt k k SymForm
-quadranceOf pol =
-  let pSq = pol .*. pol
-  in pSq <+> diagEmbedMaxel (diagBox pSq)
 
 ||| Total quadrance `2 * sum p(a)^2 + sum_{a < b} u_{ab}^2` via `sumStoredMaxel` of `quadranceOf pol`.
 public export
@@ -665,29 +499,17 @@ stepCoupledUniversePair ax params seam qAmp (uA, uB) =
 --------------------------------------------------------------------------------
 
 public export
-0 prfAntisymSingleEdge :
-  (let p0 : Space 2
-       p0 = [0, 0]
-       p1 : Space 2
-       p1 = [1, 0]
-       e  = FinScBox.Box.singletonMaxelEdge {form = AntisymForm} p0 p1 (MkBoxInt 12)
-   in (FinScBox.Box.maxelNodeCount e == 1) &&
-      (FinScBox.Box.traceMaxel e == MkBoxInt 0) &&
-      (FinScBox.Box.lookupMaxel p1 p0 e == MkBoxInt (-12))) = True
-prfAntisymSingleEdge = Refl
-
-public export
 0 prfBoundDipoleZeroNet :
-  FinScDynamics.Evolution.statePolarityNet
-    (FinScDynamics.Evolution.seedBoundDipole (FinScDynamics.Evolution.spaceBasis {n = 2}) [0, 0] [0, 1] 10) = 0
+  FinScSpace.Dynamics.Evolution.statePolarityNet
+    (FinScSpace.Dynamics.Evolution.seedBoundDipole (FinScSpace.Geometry.Affine.spaceBasis {n = 2}) [0, 0] [0, 1] 10) = 0
 prfBoundDipoleZeroNet = Refl
 
 public export
 0 prfQuadranceMaxelTotalMass :
-  (let dp = FinScDynamics.Evolution.seedBoundDipole (FinScDynamics.Evolution.spaceBasis {n = 2}) [0, 0] [0, 1] 10
-       qM = FinScDynamics.Evolution.quadranceOf dp.polarityMaxel
+  (let dp = FinScSpace.Dynamics.Evolution.seedBoundDipole (FinScSpace.Geometry.Affine.spaceBasis {n = 2}) [0, 0] [0, 1] 10
+       qM = FinScSpace.Geometry.Affine.quadranceOf dp.polarityMaxel
    in (FinScBox.Box.sumStoredMaxel qM == MkBoxInt 400) &&
-      (FinScDynamics.Evolution.stateQuadrance dp == 400)) = True
+      (FinScSpace.Dynamics.Evolution.stateQuadrance dp == 400)) = True
 prfQuadranceMaxelTotalMass = Refl
 
 public export
@@ -724,19 +546,3 @@ public export
    in (a1 + b1 == 7) && (q1 <= q0) &&
       (r2.valA == r1.valB) && (r2.valB == r1.valA) && (unwrapBox r2.valU == -u1)) = True
 prfExchangeQuadraticResonance = Refl
-
-public export
-0 prfPureStepShift :
-  FinScDynamics.Evolution.mkPureCoord [-8, 7, -3] + wrapBox (FinScDynamics.Evolution.axisAtom 0)
-  = FinScDynamics.Evolution.mkPureCoord [-7, 7, -3]
-prfPureStepShift = Refl
-
-public export
-0 prfEdgeKeyRoundTrip :
-  (let pA = mkPureCoord [-2, 5, 1]
-       pB = mkPureCoord [-1, 5, 1]
-       k  = mkEdgeKey pA pB
-   in case unpackEdgeKey k of
-        Just (a, b) => (a == pA) && (b == pB)
-        Nothing     => False) = True
-prfEdgeKeyRoundTrip = Refl

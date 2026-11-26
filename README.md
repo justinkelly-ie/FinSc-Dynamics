@@ -1,33 +1,35 @@
-# FinSc-Dynamics
+# FinSc-Space
 
-**Layer 2 blind local evolution over [`FinSc-Box`](https://github.com/justinkelly-ie/FinSc-Box) — zero observer state, zero grid walls, and zero background clock.**
+**Layer 2 observer-free geometry and blind local evolution over [`FinSc-Box`](https://github.com/justinkelly-ie/FinSc-Box).**
 
-`FinSc-Dynamics` sits directly between core multiset algebra (`FinSc-Box`) and pluggable observer libraries (`FinSc-Lens`, `FinSc-Dihedron`):
+`FinSc-Space` unifies discrete affine/projective geometry with blind local dynamics into a single observer-free layer separated into three directories (`Geometry.Affine`, `Geometry.Projective`, and `Dynamics`), where `Dynamics` imports only `FinSc-Box` and `Geometry.Affine` (never `Geometry.Projective`):
 
 ```text
-                FinSc-Box               (Layer 1: Core Multiset & Maxel Algebra)
-                    │
-                    ▼
-             FinSc-Dynamics             (Layer 2: Blind Local Evolution — App1, NoThrow)
-               ╱         ╲
-              ▼           ▼
-        FinSc-Lens     FinSc-Dihedron   (Layer 3: Independent Non-Perturbing Observers)
-              ╲           ╱
-               ▼         ▼
-             Finite-Science             (Layer 4: Top-of-Stack Lab, Audits & Visualizer)
+FinSc-Box (Layer 1: Pure Box, HereditaryMSet, Maxel, Space n, GohBound, QuadraticTriple)
+    │
+    ▼
+FinSc-Space (Layer 2: Geometry.{Affine, Projective} + Dynamics)
+    │
+    ▼
+FinSc-Lens (Layer 3: External non-perturbing horizons, projective & frame readouts)
+    │
+    ▼
+Finite-Science (Layer 4: Multi-observer lab & audit suite)
 ```
 
 ## Modules
 
-- [`Evolution.idr`](src/FinScDynamics/Evolution.idr) — `Configuration` (`PureMultiset`), `DynamicsParams` (`canonDynamicsParams`), `EvolutionState`, `Maxel` (`DiagAntisymForm` / `SymForm`), `quadranceOf`, `Space n` (`spaceBasis`) & `PureMultiset` (`pureMSetBasis`) bases, causal 1-hop `loadMaxel`, Bresenham `throttleMaxel`, `seedDipoleSites`, `seedEdgeFlux`, `seedDirectedPulse`, `seedBoundDipole`, `stepDynamicsWith`, `stepDynamicsStreamWith`, `stepCoupledSourceFlow`, and `stepCoupledUniversePair`.
-- [`FlatUniverse.idr`](src/FinScDynamics/FlatUniverse.idr) — Polymorphic linear `App1` `FlatBlackBox k` (`FlatBlackBox (Space n)`).
-- [`HereditaryUniverse.idr`](src/FinScDynamics/HereditaryUniverse.idr) — 5-shape zero-tag `Configuration` root codec (`mkLoadKey`, `mkThrottleKey`, `mkLocalizedKey`) and linear `App1` `HereditaryBlackBox` with observer-agnostic `observeHereditaryPure`.
+- [`Geometry/Affine.idr`](src/FinScSpace/Geometry/Affine.idr) — Emergent axis atoms, `AxisBasis k` (`spaceBasis`, `pureMSetBasis`), `quadranceOf`, `SymForm` metric pairings (`blueMetric2/3`, `redMetric2/3`, `greenMetric2`), `archimedesQuadrea`, and universal `QTT 0 Refl` proofs of the Triple Quad Formula and Chromogeometry Three-Fold Quadrea Theorem in `Box BoxInt (Space n)`.
+- [`Geometry/Projective.idr`](src/FinScSpace/Geometry/Projective.idr) — Division-free projective `Proportion`, metric-polymorphic `spreadBetween`, universal `QTT 0 Refl` proofs of the Spread Law, Cross Law, and Triple Spread Law, unified metric-parameterized `Rotor` (`SO(3; Q)` Quaternions under `blueMetric3` and `SO(1, 2; Q)` Wildberger Dihedrons under `redMetric3`), `QuadraticTriple` boosts, Wigner–Thomas precession, and $\mathbb{D} \otimes \mathbb{D}$ `AntisymForm` Quaternion realization.
+- [`Dynamics/Evolution.idr`](src/FinScSpace/Dynamics/Evolution.idr) — Frame-blind local quadratic exchange (`EvolutionState`, `DynamicsParams`, causal 1-hop `loadMaxel`, Bresenham `throttleMaxel`, `stepDynamicsWith`, `stepDynamicsStreamWith`, `stepCoupledSourceFlow`, `stepCoupledUniversePair`).
+- [`Dynamics/FlatUniverse.idr`](src/FinScSpace/Dynamics/FlatUniverse.idr) — Polymorphic linear `App1` `FlatBlackBox k`.
+- [`Dynamics/HereditaryUniverse.idr`](src/FinScSpace/Dynamics/HereditaryUniverse.idr) — Zero-tag `Configuration` root codec and linear `App1` `HereditaryBlackBox`.
 
 ## Building & Installing
 
 ```bash
 cd FinSc-Box && idris2 --build FinSc-Box.ipkg && idris2 --install FinSc-Box.ipkg
-cd ../FinSc-Dynamics && idris2 --build FinSc-Dynamics.ipkg && idris2 --install FinSc-Dynamics.ipkg
+cd ../FinSc-Space && idris2 --build FinSc-Space.ipkg && idris2 --install FinSc-Space.ipkg
 ```
 
 ## License

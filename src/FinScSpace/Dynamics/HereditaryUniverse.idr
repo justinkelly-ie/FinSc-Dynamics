@@ -1,4 +1,4 @@
-module FinScDynamics.HereditaryUniverse
+module FinScSpace.Dynamics.HereditaryUniverse
 
 import Control.App
 import FinScBox.BoxInt
@@ -7,7 +7,7 @@ import FinScBox.Box
 import FinScBox.HereditaryMSet
 import FinScBox.Lenses
 import FinScBox.BlackRedZoom
-import FinScDynamics.Evolution
+import FinScSpace.Dynamics.Evolution
 
 %default total
 
@@ -295,7 +295,7 @@ stepHereditaryWith params (MkHereditaryBox root) =
   App1.pure1 (MkHereditaryBox (stepHereditaryWithRoot {minDim} params root))
 
 ||| Universal non-perturbing external projection (`0 same : uOut = uIn`), observer-agnostic
-||| across `FinSc-Lens` (`applyExternalLens lens`), `FinSc-Dihedron` frames, or raw readouts.
+||| across `FinSc-Lens` (`applyExternalLens lens`), projective frames, or raw readouts.
 export
 observeHereditaryPure :
   (Configuration -> out) ->
