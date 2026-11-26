@@ -101,11 +101,11 @@ hasBalancedPartner oppK mult rootBox =
   let expOpp = negWeight mult
   in not (boxIsZero expOpp) && lookupBox oppK rootBox == expOpp
 
-||| Packs active `PolarityMaxel` sites (`a == b -> a`) and balanced directed-edge pairs (`mkEdgeKey a b : +w`, `mkEdgeKey b a : -w`).
+||| Packs active polarity sites (`a == b -> a`) and balanced directed-edge pairs (`mkEdgeKey a b : +w`, `mkEdgeKey b a : -w`).
 public export
 packPolarityBox :
   Box BoxInt Configuration ->
-  PolarityMaxel PureMultiset ->
+  Maxel BoxInt PureMultiset PureMultiset DiagAntisymForm ->
   Box BoxInt Configuration
 packPolarityBox base pol =
   foldStoredMaxel
@@ -117,7 +117,7 @@ packPolarityBox base pol =
     base pol
 
 public export
-packSymMaxelToHMSet : QuadranceMaxel PureMultiset -> Configuration
+packSymMaxelToHMSet : Maxel BoxInt PureMultiset PureMultiset SymForm -> Configuration
 packSymMaxelToHMSet symM =
   MkHMSet $ foldStoredMaxel
               (\posA, posB, w, acc =>
@@ -127,7 +127,7 @@ packSymMaxelToHMSet symM =
               BoxLeaf symM
 
 public export
-unpackHMSetToSymMaxel : Configuration -> QuadranceMaxel PureMultiset
+unpackHMSetToSymMaxel : Configuration -> Maxel BoxInt PureMultiset PureMultiset SymForm
 unpackHMSetToSymMaxel (MkHMSet b) =
   foldBox (\entry, mult, acc =>
              if isSiteKey entry
@@ -140,7 +140,7 @@ unpackHMSetToSymMaxel (MkHMSet b) =
 public export
 packSymDipole :
   (Configuration -> Configuration) ->
-  QuadranceMaxel PureMultiset ->
+  Maxel BoxInt PureMultiset PureMultiset SymForm ->
   Box BoxInt Configuration ->
   Box BoxInt Configuration
 packSymDipole mkKey maxel acc =
@@ -225,27 +225,27 @@ public export
 stepHereditaryWithRoot : DynamicsParams -> Configuration -> Configuration
 stepHereditaryWithRoot params root =
   let unp      = unpackRootToEvolutionState root
-      (st1, _) = stepDynamicsWith pureMSetBasis params unp.stateData
+      (st1, _) = stepDynamicsWith (pureMSetBasis 2) params unp.stateData
   in packEvolutionStateToRoot unp.keptNonField st1
 
 public export
 checkTagFreePackUnpackRoundTrip : Bool
 checkTagFreePackUnpackRoundTrip =
-  let actDp = seedBoundDipole3DZ pureMSetBasis 2 1 3 4 3
-      p0    = mkPureCoord3D 0 0 0
-      p1    = mkPureCoord3D 1 0 1
+  let actDp = seedBoundDipole (pureMSetBasis 3) [2, 1, 3] [2, 1, 4] 3
+      p0    = mkPureCoord [0, 0, 0]
+      p1    = mkPureCoord [1, 0, 1]
       edgeF = singletonMaxelEdge {form = DiagAntisymForm} p1 p0 (MkBoxInt 5)
       loadB = diagEmbedMaxel (singletonBox p0 (MkBoxInt 16)) <+> singletonMaxelEdge p1 p0 (MkBoxInt 25)
       thrB  = singletonMaxelEdge p0 p1 (MkBoxInt 11) <+>
-              singletonMaxelEdge p0 (mkPureCoord3D 0 1 1) (MkBoxInt (-23))
+              singletonMaxelEdge p0 (mkPureCoord [0, 1, 1]) (MkBoxInt (-23))
       st0   = MkEvolutionState (actDp.polarityMaxel <+> edgeF) loadB thrB
       root0 = packEvolutionStateToRoot BoxLeaf st0
       st1   = (unpackRootToEvolutionState root0).stateData
   in (unwrapBox (sumHMSet root0) == 0) &&
      verifyRootBalancedDipoles root0 &&
      isSymMaxel st1.loadMaxel &&
-     (treeSizeNonZero (activeAxisAtomsOf pureMSetBasis st1.polarityMaxel) == 3) &&
-     (treeSizeNonZero (activeUnitAxesOf pureMSetBasis st1.polarityMaxel) == 6) &&
+     (treeSizeNonZero (activeAxisAtomsOf (pureMSetBasis 2) st1.polarityMaxel) == 3) &&
+     (treeSizeNonZero (activeUnitAxesOf (pureMSetBasis 2) st1.polarityMaxel) == 6) &&
      (st1.polarityMaxel == st0.polarityMaxel) &&
      (st1.loadMaxel == st0.loadMaxel) &&
      (st1.throttleMaxel == st0.throttleMaxel)
@@ -293,14 +293,6 @@ stepHereditaryWith :
 stepHereditaryWith params (MkHereditaryBox root) =
   App1.pure1 (MkHereditaryBox (stepHereditaryWithRoot params root))
 
-||| Blind local evolution step directly inside `root : Configuration` over `StepMode`.
-export
-stepHereditaryByMode :
-  StepMode ->
-  (1 u : HereditaryBlackBox) ->
-  App1 e HereditaryBlackBox
-stepHereditaryByMode mode = stepHereditaryWith (canonDynamicsParams mode)
-
 ||| Universal non-perturbing external projection (`0 same : uOut = uIn`), observer-agnostic
 ||| across `FinSc-Lens` (`applyExternalLens lens`), `FinSc-Dihedron` frames, or raw readouts.
 export
@@ -324,11 +316,11 @@ closeHereditary0D (MkHereditaryBox root) = App1.pure root
 public export
 0 prfFiveShapesDisjoint :
   (let sampleDipole = sampleUnitPairMSet
-       site = mkPureCoord3D (-1) 2 (-3)
-       edge = mkEdgeKey emptyHMSet stepZ
+       site = mkPureCoord [-1, 2, -3]
+       edge = mkEdgeKey emptyHMSet (wrapBox (axisNat 2))
        load = mkLoadKey sampleDipole
        thr  = mkThrottleKey sampleDipole
-       loc  = mkLocalizedKey (mkPureCoord3D (-5) 0 2) (scalarKeyHMSet 2)
+       loc  = mkLocalizedKey (mkPureCoord [-5, 0, 2]) (scalarKeyHMSet 2)
    in isSiteKey site && isNothing (unpackEdgeKey site) && isNothing (unpackLoadKey site) && isNothing (unpackThrottleKey site) && isNothing (unpackLocalizedKey site) &&
       not (isSiteKey edge) && isNothing (unpackLoadKey edge) && isNothing (unpackThrottleKey edge) && isNothing (unpackLocalizedKey edge) &&
       not (isSiteKey load) && isNothing (unpackEdgeKey load) && isNothing (unpackThrottleKey load) && isNothing (unpackLocalizedKey load) &&
@@ -338,6 +330,6 @@ prfFiveShapesDisjoint = Refl
 
 public export
 0 prfTagFreeActiveVertexZeroSum :
-  (let root0 = packEvolutionStateToRoot BoxLeaf (seedBoundDipole pureMSetBasis 0 0 1 10)
+  (let root0 = packEvolutionStateToRoot BoxLeaf (seedBoundDipole (pureMSetBasis 2) [0, 0] [0, 1] 10)
    in unwrapBox (sumHMSet root0) == 0) = True
 prfTagFreeActiveVertexZeroSum = Refl

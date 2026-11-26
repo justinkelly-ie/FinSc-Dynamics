@@ -9,7 +9,7 @@ import FinScDynamics.Evolution
 
 --------------------------------------------------------------------------------
 -- 1. MODEL A: POLYMORPHIC CLOSED 0D SPARSE FIELD COMPUTE (`App1`, `NoThrow`)
---    - Parameterized over any discrete coordinate basis `k` (`SignedCoord` 1D, `Coord2` 2D, `Coord3` 3D).
+--    - Parameterized over any discrete coordinate basis `k` (`Space n` or `PureMultiset`).
 --    - Evolves blindly with zero walls, zero observer state, and zero display/codec dependencies.
 --------------------------------------------------------------------------------
 
@@ -56,15 +56,6 @@ stepFlatWith :
   App1 e (FlatBlackBox k)
 stepFlatWith params (MkFlatBox basis state) =
   App1.pure1 (MkFlatBox basis (fst (stepDynamicsWith basis params state)))
-
-||| Blind local evolution step under `canonDynamicsParams mode`.
-export
-stepFlatByMode :
-  Ord k =>
-  StepMode ->
-  (1 u : FlatBlackBox k) ->
-  App1 e (FlatBlackBox k)
-stepFlatByMode mode = stepFlatWith (canonDynamicsParams mode)
 
 ||| Universal non-perturbing external projection on `FlatBlackBox k` carrying `0 same : uOut = uIn`.
 export
