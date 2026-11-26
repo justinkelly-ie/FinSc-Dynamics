@@ -318,7 +318,7 @@ public export
 0 prfFiveShapesDisjoint :
   (let sampleDipole = sampleUnitPairMSet
        site = mkPureCoord [-1, 2, -3]
-       edge = mkEdgeKey emptyHMSet (wrapBox (axisNat 2))
+       edge = mkEdgeKey emptyHMSet (wrapBox (axisAtom 2))
        load = mkLoadKey sampleDipole
        thr  = mkThrottleKey sampleDipole
        loc  = mkLocalizedKey (mkPureCoord [-5, 0, 2]) (scalarKeyHMSet 2)

@@ -21,12 +21,8 @@ Configuration = PureMultiset
 
 ||| Canonical positive scalar axis atom `{ [] : i + 1 }` (`0 -> X`, `1 -> Y`, `2 -> Z`, ...).
 public export
-axisNat : Nat -> PureMultiset
-axisNat i = scalarKeyHMSet (natToInteger (S i))
-
-public export
-axisAtom : Fin n -> PureMultiset
-axisAtom i = axisNat (finToNat i)
+axisAtom : Nat -> PureMultiset
+axisAtom i = scalarKeyHMSet (natToInteger (S i))
 
 ||| If `k` is a positive scalar axis atom `{ [] : i }` (`i >= 1`), returns `Just i`.
 public export
@@ -121,7 +117,7 @@ record AxisBasis (k : Type) where
 public export
 mkPureCoord : {n : Nat} -> Space n -> Configuration
 mkPureCoord =
-  foldSpaceWithFin (\i, c, acc => acc <+> scaleM (signedToBoxInt c) (wrapBox (axisAtom i))) emptyHMSet
+  foldSpaceWithFin (\i, c, acc => acc <+> scaleM (signedToBoxInt c) (wrapBox (axisAtom (finToNat i)))) emptyHMSet
 
 public export
 coordAlong : AxisBasis k -> PureMultiset -> k -> Integer
@@ -176,7 +172,7 @@ mkAxisBasis allowEmergent axes stepFn oddFn toMSet fromMSet =
 public export
 baseAxesN : Nat -> Box BoxInt PureMultiset
 baseAxesN Z     = BoxLeaf
-baseAxesN (S k) = setBox (axisNat k) (MkBoxInt 1) (baseAxesN k)
+baseAxesN (S k) = setBox (axisAtom k) (MkBoxInt 1) (baseAxesN k)
 
 ||| Dimension-uniform coordinate basis for `Space n` (`1D`, `2D`, `3D`, `ND`).
 public export
@@ -188,7 +184,7 @@ spaceBasis {n} =
     (\axKey => maybe (zeroSpace n) unitSpace (atomToFin axKey))
     (\axKey, pos => maybe False (\i => isOddSigned (indexSpace i pos)) (atomToFin axKey))
     mkPureCoord
-    (\m => tabulateSpace (\i => cast (lookupKeyHMSet (axisAtom i) m)))
+    (\m => tabulateSpace (\i => cast (lookupKeyHMSet (axisAtom (finToNat i)) m)))
 
 public export
 pureMSetBasis : Nat -> AxisBasis PureMultiset
@@ -604,21 +600,6 @@ stepDynamicsStreamWith ax params st =
               else (StreamSkip, 0, sStep)
        else (StreamYield st1, yStep, sStep)
 
-||| Streams `st0` via `freezeStateStreamWith` under explicit `DynamicsParams` and `(yieldBound : GohBound cap, stepBudget : Nat)`.
-public export
-freezeDynamicsStreamWith :
-  {0 cap     : Nat} ->
-  GroupCoord k =>
-  AxisBasis k ->
-  DynamicsParams ->
-  (g          : Nat) ->
-  (yieldBound : GohBound cap) ->
-  (stepBudget : Nat) ->
-  EvolutionState k ->
-  (SolidifiedStream (StaticTime (- cast g) (cast cap)) cap (EvolutionState k), Nat)
-freezeDynamicsStreamWith ax params g yBound sBudget st0 =
-  freezeStateStreamWith g yBound sBudget (stepDynamicsStreamWith ax params) st0
-
 ||| Injects any peeled `Configuration` relic key `k` (directed edge `mkEdgeKey a b` or site key `s`)
 ||| directly over `AxisBasis k` with flux weight `amp` — preserving negative coordinates and 3D/ND axes
 ||| with zero `(Nat, Nat, Nat)` tuple conversion.
@@ -630,7 +611,7 @@ injectRelicBond ax u k amp =
           Just (a, b) => (ax.fromSiteMSet a, ax.fromSiteMSet b)
           Nothing     =>
             let s = ax.fromSiteMSet (projectToSiteMSet k)
-            in (s, combine s (ax.axisStep (axisNat 0)))
+            in (s, combine s (ax.axisStep (axisAtom 0)))
   in u <+> MkEvolutionState (singletonMaxelEdge posA posB amp) emptyMaxel emptyMaxel
 
 ||| Coupled two-multiset boundary flow parameterized by `DynamicsParams`:
@@ -746,7 +727,7 @@ prfExchangeQuadraticResonance = Refl
 
 public export
 0 prfPureStepShift :
-  FinScDynamics.Evolution.mkPureCoord [-8, 7, -3] + wrapBox (FinScDynamics.Evolution.axisNat 0)
+  FinScDynamics.Evolution.mkPureCoord [-8, 7, -3] + wrapBox (FinScDynamics.Evolution.axisAtom 0)
   = FinScDynamics.Evolution.mkPureCoord [-7, 7, -3]
 prfPureStepShift = Refl
 
