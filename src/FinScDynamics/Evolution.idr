@@ -37,13 +37,12 @@ stepX : PureMultiset
 stepX = wrapBox axisX
 
 public export
-stepZ : PureMultiset
-stepZ = wrapBox axisZ
+stepY : PureMultiset
+stepY = wrapBox axisY
 
 public export
-isNothingMaybe : Maybe a -> Bool
-isNothingMaybe Nothing = True
-isNothingMaybe _       = False
+stepZ : PureMultiset
+stepZ = wrapBox axisZ
 
 ||| If `k` is a positive scalar axis atom `{ [] : i }` (`i >= 1`), returns `Just i`.
 public export
@@ -154,16 +153,11 @@ record AxisBasis (k : Type) where
 
 public export
 mkPureCoord2D : (x, y : Integer) -> Configuration
-mkPureCoord2D x y =
-  MkHMSet $ addAtKeyBox axisY (MkBoxInt y)
-          $ addAtKeyBox axisX (MkBoxInt x) BoxLeaf
+mkPureCoord2D x y = scaleHMSet (MkBoxInt x) stepX + scaleHMSet (MkBoxInt y) stepY
 
 public export
 mkPureCoord3D : (x, y, z : Integer) -> Configuration
-mkPureCoord3D x y z =
-  MkHMSet $ addAtKeyBox axisZ (MkBoxInt z)
-          $ addAtKeyBox axisY (MkBoxInt y)
-          $ addAtKeyBox axisX (MkBoxInt x) BoxLeaf
+mkPureCoord3D x y z = mkPureCoord2D x y + scaleHMSet (MkBoxInt z) stepZ
 
 public export
 coordAlong : AxisBasis k -> PureMultiset -> k -> Integer
@@ -253,7 +247,7 @@ coord1Basis =
     baseAxes1D
     (\_ => PosZ 0)
     (\_, x => isOddSigned x)
-    (\x => singletonHMSet axisX (signedToBoxInt x))
+    (\x => scaleHMSet (signedToBoxInt x) stepX)
     (\m => boxIntToSigned (lookupKeyHMSet axisX m))
 
 public export
@@ -271,7 +265,7 @@ coord2Basis =
     baseAxes2D
     coord2Step
     (\axKey, (x, y) => if axKey == axisX then isOddSigned x else isOddSigned y)
-    (\(x, y) => MkHMSet (addAtKeyBox axisY (signedToBoxInt y) (singletonBox axisX (signedToBoxInt x))))
+    (\(x, y) => scaleHMSet (signedToBoxInt x) stepX + scaleHMSet (signedToBoxInt y) stepY)
     (\m => (boxIntToSigned (lookupKeyHMSet axisX m), boxIntToSigned (lookupKeyHMSet axisY m)))
 
 public export
@@ -296,9 +290,9 @@ coord3Basis =
        else if axKey == axisY then isOddSigned y
        else isOddSigned z)
     (\(x, (y, z)) =>
-       MkHMSet $ addAtKeyBox axisZ (signedToBoxInt z)
-               $ addAtKeyBox axisY (signedToBoxInt y)
-               $ singletonBox axisX (signedToBoxInt x))
+       scaleHMSet (signedToBoxInt x) stepX +
+       scaleHMSet (signedToBoxInt y) stepY +
+       scaleHMSet (signedToBoxInt z) stepZ)
     (\m => (boxIntToSigned (lookupKeyHMSet axisX m),
            (boxIntToSigned (lookupKeyHMSet axisY m),
             boxIntToSigned (lookupKeyHMSet axisZ m))))
@@ -612,13 +606,24 @@ collectAxisLinks ax stepDir pol =
     pol
 
 public export
-applyLinkExchangePow : Ord k => (y : Nat) -> (posA, posB : k) -> (m, pA, pB, uOld : BoxInt) -> PolarityMaxel k -> PolarityMaxel k
-applyLinkExchangePow Z       _    _    _ _  _  _    pol = pol
-applyLinkExchangePow y@(S _) posA posB m pA pB uOld pol =
-  let res = exchangeQuadraticPow y m pA pB uOld
+applyLinkExchangeTriple :
+  Ord k =>
+  QuadraticTriple ->
+  (posA, posB : k) ->
+  (pA, pB, uOld : BoxInt) ->
+  PolarityMaxel k ->
+  PolarityMaxel k
+applyLinkExchangeTriple qt posA posB pA pB uOld pol =
+  let res = exchangeQuadraticTriple qt pA pB uOld
       w1  = if res.valA /= pA then setMaxelEdge posA posA res.valA pol else pol
       w2  = if res.valB /= pB then setMaxelEdge posB posB res.valB w1  else w1
   in if res.valU /= uOld then setMaxelEdge posA posB res.valU w2 else w2
+
+public export
+applyLinkExchangePow : Ord k => (y : Nat) -> (posA, posB : k) -> (m, pA, pB, uOld : BoxInt) -> PolarityMaxel k -> PolarityMaxel k
+applyLinkExchangePow Z       _    _    _ _  _  _    pol = pol
+applyLinkExchangePow y@(S _) posA posB m pA pB uOld pol =
+  applyLinkExchangeTriple (pythPowerTriple y m) posA posB pA pB uOld pol
 
 public export
 linkLoadSum : Ord k => QuadranceMaxel k -> k -> k -> BoxInt
@@ -707,6 +712,8 @@ stepDynamicsCore ax outerPasses innerTicks lagDiv decayNum decayDen linkCoup m0 
     else
       let kInt       = max 1 (natToInteger (outerPasses * innerTicks))
           mSub       = if lagDiv > 0 then kInt * m0 else m0
+          baseTriple = pythGeneratorTriple (MkBoxInt mSub)
+          fullTriple = powQuadraticTriple innerTicks baseTriple
           paceBudget = if lagDiv > 0 && m0 > 0 then m0 * lagDiv else 0
           axesBox    = activeAxisAtomsOf ax st.polarityMaxel
           unitSt     = activeUnitAxesOf ax st.polarityMaxel
@@ -722,7 +729,12 @@ stepDynamicsCore ax outerPasses innerTicks lagDiv decayNum decayDen linkCoup m0 
                                 bal   = lookupMaxel posA posB a.ppThrottle
                                 (yCnt, sCnt, newBal) = paceMultiSubTicks innerTicks paceBudget cost bal
                                 thr1  = if newBal /= bal then setMaxelEdge posA posB newBal a.ppThrottle else a.ppThrottle
-                                pol1  = applyLinkExchangePow yCnt posA posB (MkBoxInt mSub) pA pB uOld a.ppPolarity
+                                pol1  = if yCnt == 0
+                                          then a.ppPolarity
+                                          else let qt = if yCnt == innerTicks then fullTriple
+                                                        else if yCnt == 1 then baseTriple
+                                                        else powQuadraticTriple yCnt baseTriple
+                                               in applyLinkExchangeTriple qt posA posB pA pB uOld a.ppPolarity
                             in MkPacedPassAcc pol1 thr1 (a.ppYields + yCnt) (a.ppSkips + sCnt))
                          acc
             in runPasses rem acc1

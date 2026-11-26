@@ -79,15 +79,12 @@ unpackLocalizedKey entry@(MkHMSet b) =
 public export
 lookupLocalizedAt : (targetPos : Configuration) -> Configuration -> Configuration
 lookupLocalizedAt targetPos (MkHMSet b) =
-  foldBox (\entry, _, acc =>
-             if acc /= emptyHMSet
-               then acc
-               else case unpackLocalizedKey entry of
-                      Just (posM, pay) =>
-                        if posM == targetPos then pay else acc
-                      Nothing => acc)
-          emptyHMSet
-          b
+  fromMaybe emptyHMSet $
+    findBox (\entry, _ =>
+               case unpackLocalizedKey entry of
+                 Just (posM, pay) => if posM == targetPos then Just pay else Nothing
+                 Nothing          => Nothing)
+            b
 
 --------------------------------------------------------------------------------
 -- 2. ZERO-TAG ZERO-COPY HEREDITARY ROOT CODEC (`EvolutionState <-> Configuration`)
@@ -332,11 +329,11 @@ public export
        load = mkLoadKey sampleDipole
        thr  = mkThrottleKey sampleDipole
        loc  = mkLocalizedKey (mkPureCoord3D (-5) 0 2) (scalarKeyHMSet 2)
-   in isSiteKey site && isNothingMaybe (unpackEdgeKey site) && isNothingMaybe (unpackLoadKey site) && isNothingMaybe (unpackThrottleKey site) && isNothingMaybe (unpackLocalizedKey site) &&
-      not (isSiteKey edge) && isNothingMaybe (unpackLoadKey edge) && isNothingMaybe (unpackThrottleKey edge) && isNothingMaybe (unpackLocalizedKey edge) &&
-      not (isSiteKey load) && isNothingMaybe (unpackEdgeKey load) && isNothingMaybe (unpackThrottleKey load) && isNothingMaybe (unpackLocalizedKey load) &&
-      not (isSiteKey thr)  && isNothingMaybe (unpackEdgeKey thr)  && isNothingMaybe (unpackLoadKey thr)  && isNothingMaybe (unpackLocalizedKey thr) &&
-      not (isSiteKey loc)  && isNothingMaybe (unpackEdgeKey loc)  && isNothingMaybe (unpackLoadKey loc)  && isNothingMaybe (unpackThrottleKey loc)) = True
+   in isSiteKey site && isNothing (unpackEdgeKey site) && isNothing (unpackLoadKey site) && isNothing (unpackThrottleKey site) && isNothing (unpackLocalizedKey site) &&
+      not (isSiteKey edge) && isNothing (unpackLoadKey edge) && isNothing (unpackThrottleKey edge) && isNothing (unpackLocalizedKey edge) &&
+      not (isSiteKey load) && isNothing (unpackEdgeKey load) && isNothing (unpackThrottleKey load) && isNothing (unpackLocalizedKey load) &&
+      not (isSiteKey thr)  && isNothing (unpackEdgeKey thr)  && isNothing (unpackLoadKey thr)  && isNothing (unpackLocalizedKey thr) &&
+      not (isSiteKey loc)  && isNothing (unpackEdgeKey loc)  && isNothing (unpackLoadKey loc)  && isNothing (unpackThrottleKey loc)) = True
 prfFiveShapesDisjoint = Refl
 
 public export
